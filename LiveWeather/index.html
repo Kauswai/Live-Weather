@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SkyPulse · Live Weather</title>
+  <meta name="description" content="Live weather for your exact location: past, present and future temperature, humidity, cloud cover, wind and rain, with an umbrella advisor." />
+  <meta name="theme-color" content="#0b1530" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='24' cy='24' r='12' fill='%23ffc94d'/%3E%3Cg fill='%23e8eefc'%3E%3Ccircle cx='26' cy='40' r='10'/%3E%3Ccircle cx='38' cy='34' r='13'/%3E%3Ccircle cx='50' cy='41' r='9'/%3E%3Crect x='26' y='40' width='24' height='10' rx='4'/%3E%3C/g%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="scene-clear-day">
+  <div class="sky" aria-hidden="true"><div class="precip"></div></div>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span>SkyPulse</span>
+    </div>
+
+    <div class="search" role="search">
+      <svg class="search-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+      <input id="searchInput" type="search" placeholder="Search a city…" autocomplete="off" aria-label="Search location" />
+      <ul id="searchResults" class="search-results" role="listbox" hidden></ul>
+    </div>
+
+    <div class="top-actions">
+      <button id="locateBtn" class="chip" title="Follow my live location">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="7.5"/></svg>
+        <span>Live GPS</span>
+      </button>
+      <div class="seg" role="group" aria-label="Units">
+        <button data-unit="C" class="active">°C</button>
+        <button data-unit="F">°F</button>
+      </div>
+    </div>
+  </header>
+
+  <main id="app" class="layout" aria-busy="true">
+
+    <!-- Status line -->
+    <section class="status-line">
+      <div class="live-pill" id="livePill"><span class="dot"></span><span id="liveText">Connecting…</span></div>
+      <div class="status-meta">
+        <span id="locMeta">—</span>
+        <span class="sep">·</span>
+        <span id="clock">—</span>
+        <span class="sep">·</span>
+        <span id="updated">—</span>
+        <button id="refreshBtn" class="icon-btn" title="Refresh now" aria-label="Refresh now">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg>
+        </button>
+      </div>
+    </section>
+
+    <!-- Hero: current conditions -->
+    <section class="card hero" id="hero">
+      <div class="hero-main">
+        <div>
+          <h1 id="placeName">Locating you…</h1>
+          <p class="place-sub" id="placeSub">Waiting for location permission</p>
+        </div>
+        <div class="hero-now">
+          <div class="hero-icon" id="heroIcon"></div>
+          <div>
+            <div class="hero-temp" id="heroTemp">–°</div>
+            <div class="hero-cond" id="heroCond">—</div>
+          </div>
+        </div>
+        <div class="hero-sub">
+          <span id="heroFeels">Feels like –</span>
+          <span class="sep">·</span>
+          <span id="heroHiLo">H – L –</span>
+        </div>
+        <p class="hero-summary" id="heroSummary"></p>
+      </div>
+      <div class="sun-box">
+        <svg viewBox="0 0 240 120" class="sun-arc" aria-hidden="true">
+          <path d="M20 100 A100 100 0 0 1 220 100" class="arc-bg"/>
+          <path id="sunArcProgress" d="M20 100 A100 100 0 0 1 220 100" class="arc-fg"/>
+          <line x1="8" y1="100" x2="232" y2="100" class="horizon"/>
+          <circle id="sunDot" cx="20" cy="100" r="8" class="sun-dot"/>
+        </svg>
+        <div class="sun-times">
+          <div><small>Sunrise</small><b id="sunrise">–</b></div>
+          <div class="center"><small id="dayLenLabel">Daylight</small><b id="dayLen">–</b></div>
+          <div class="right"><small>Sunset</small><b id="sunset">–</b></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Umbrella advisor -->
+    <section class="card umbrella" id="umbrellaCard">
+      <div class="card-head">
+        <h2>Umbrella advisor</h2>
+        <div class="seg small" id="umbWin" role="group" aria-label="Look-ahead window">
+          <button data-h="1">1h</button><button data-h="3">3h</button><button data-h="6" class="active">6h</button><button data-h="12">12h</button><button data-h="24">24h</button>
+        </div>
+      </div>
+      <div class="umb-body">
+        <div class="umb-gauge">
+          <svg viewBox="0 0 120 120" aria-hidden="true">
+            <circle cx="60" cy="60" r="50" class="g-bg"/>
+            <circle cx="60" cy="60" r="50" class="g-fg" id="gaugeArc"/>
+            <line id="gaugeThr" x1="102" y1="60" x2="117" y2="60" class="g-thr"/>
+          </svg>
+          <div class="g-center">
+            <div class="umb-icon" id="umbIcon"></div>
+            <div class="g-val" id="gaugeVal">–%</div>
+          </div>
+        </div>
+        <div class="umb-text">
+          <div class="verdict" id="umbVerdict">—</div>
+          <p id="umbDetail" class="muted"></p>
+          <ul id="umbNotes" class="umb-notes"></ul>
+        </div>
+      </div>
+      <div class="umb-bars" id="umbBars" aria-label="Hourly rain probability in window"></div>
+      <label class="thr">
+        <span>Alert me when rain chance ≥ <b id="thrVal">40%</b></span>
+        <input type="range" id="thrInput" min="10" max="90" step="5" value="40" />
+      </label>
+    </section>
+
+    <!-- Metric tiles -->
+    <section class="tiles" id="tiles" aria-label="Current parameters"></section>
+
+    <!-- Timeline chart -->
+    <section class="card chart-card">
+      <div class="card-head wrap">
+        <h2>Past · Present · Future</h2>
+        <div class="seg small" id="paramTabs" role="tablist">
+          <button data-p="temp" class="active">Temperature</button>
+          <button data-p="hum">Humidity</button>
+          <button data-p="cloud">Cloud cover</button>
+          <button data-p="rain">Rain</button>
+          <button data-p="wind">Wind</button>
+          <button data-p="press">Pressure</button>
+        </div>
+      </div>
+      <div class="chart-legend-row">
+        <div class="seg small" id="rangeTabs" role="group" aria-label="Time range">
+          <button data-r="short">±24 h</button>
+          <button data-r="mid" class="active">−2 d / +3 d</button>
+          <button data-r="full">−2 d / +7 d</button>
+        </div>
+        <div class="legend-note"><span class="swatch past"></span>Past (dashed) <span class="swatch now"></span>Now <span class="swatch fut"></span>Forecast</div>
+      </div>
+      <div class="chart-wrap"><canvas id="mainChart" aria-label="Weather timeline chart"></canvas></div>
+    </section>
+
+    <!-- Live feed -->
+    <section class="card feed-card">
+      <div class="card-head">
+        <h2>Live feed</h2>
+        <span class="muted small" id="nextRefresh">—</span>
+      </div>
+      <ol id="feed" class="feed" aria-live="polite"></ol>
+    </section>
+
+    <!-- Hourly strip -->
+    <section class="card hourly-card">
+      <div class="card-head"><h2>Next 24 hours</h2><span class="muted small">Rain chance shown in blue</span></div>
+      <div class="hourly" id="hourly"></div>
+    </section>
+
+    <!-- Daily -->
+    <section class="card daily-card">
+      <div class="card-head"><h2>8-day forecast</h2></div>
+      <div id="daily" class="daily"></div>
+    </section>
+
+    <!-- Past 48h -->
+    <section class="card past-card">
+      <div class="card-head"><h2>Looking back</h2><span class="muted small">Last 48 hours</span></div>
+      <div id="past" class="past"></div>
+    </section>
+
+    <footer class="foot">
+      Data: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> (forecast &amp; air quality, CC BY 4.0) ·
+      place names: <a href="https://www.bigdatacloud.com/" target="_blank" rel="noopener">BigDataCloud</a>.
+      Your location never leaves your browser except as coordinates sent to these APIs.
+    </footer>
+  </main>
+
+  <!-- Location gate -->
+  <div class="gate" id="gate">
+    <div class="gate-box">
+      <div class="gate-spinner" id="gateSpinner"></div>
+      <h2 id="gateTitle">Finding your location…</h2>
+      <p id="gateMsg" class="muted">Allow location access for live, hyper-local updates.</p>
+      <div class="gate-actions" id="gateActions" hidden>
+        <button class="btn" id="gateRetry">Try GPS again</button>
+        <button class="btn ghost" id="gateSearch">Search a city instead</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" hidden></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
+  <script src="icons.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
