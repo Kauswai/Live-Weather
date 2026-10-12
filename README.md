@@ -13,6 +13,7 @@
 | 📍 **Live GPS** | Follows your position and refreshes the forecast when you move more than 1.5 km. Falls back to city search or your last known place. |
 | ☂️ **Umbrella advisor** | Choose a 1–24 h window and a rain-chance threshold. It blends hourly probability, expected rainfall and a 15-minute nowcast into a clear recommendation. |
 | 📰 **Live feed** | Auto-refreshes every 5 min and logs changes plus upcoming events: rain onset, thunderstorms, sunset, high UV, strong gusts. |
+| 🌅 **Sun tracker** | The live solar elevation and azimuth are computed from your latitude, longitude and the time of year. It shows the sunrise → sunset elevation curve, a top-down sky path, local sunrise/sunset/solar-noon times, day length (and its daily change), golden hour, twilight, your shadow length, and a full-year day-length chart. |
 | 📈 **Past · Present · Future** | One interactive chart from 2 days back to 7 days ahead, with a "now" marker. |
 | 🧭 **Current conditions** | Feels like, humidity, dew point, cloud layers, wind, pressure tendency, rain, nowcast, UV, visibility, air quality, moon phase. |
 | 🗓️ **Forecasts** | Next-24-hour strip, 8-day outlook, and a look back at the last 48 hours. |
@@ -26,6 +27,7 @@ Live-Weather/
 │   ├── index.html            page structure
 │   ├── styles.css            glassmorphism theme, weather-reactive backgrounds, responsive layout
 │   ├── icons.js              animated SVG weather icons + WMO weather-code names
+│   ├── sun.js                solar position, sunrise/sunset/twilight maths (NOAA algorithm)
 │   ├── app.js                location, data fetching, umbrella logic, charts, live feed
 │   └── README.md             technical documentation
 ├── .github/workflows/
@@ -49,4 +51,5 @@ Repository **Settings → Pages → Build and deployment → Source: GitHub Acti
 - Weather forecast, history, nowcast and air quality: [Open-Meteo](https://open-meteo.com/) (CC BY 4.0)
 - Place names from coordinates: [BigDataCloud](https://www.bigdatacloud.com/) free client-side reverse geocoding
 - City search: Open-Meteo Geocoding API
+- Sun position & events: computed locally with the [NOAA Solar Calculator](https://gml.noaa.gov/grad/solcalc/calcdetails.html) equations (Meeus, *Astronomical Algorithms*)
 - Charts: [Chart.js](https://www.chartjs.org/) 4.4.1

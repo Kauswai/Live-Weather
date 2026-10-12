@@ -5,10 +5,11 @@ A static site: plain HTML, CSS and JavaScript, with no build step or dependencie
 ## Files
 | File | Purpose |
 |---|---|
-| `index.html` | Page skeleton: top bar (search, GPS, units), hero, umbrella advisor, tiles, chart, live feed, hourly, daily, look-back, location gate. |
+| `index.html` | Page skeleton: top bar (search, GPS, units), hero, umbrella advisor, tiles, sun tracker, chart, live feed, hourly, daily, look-back, location gate. |
 | `styles.css` | Theme tokens, scene palettes (`body.scene-*`), rain/snow overlays, a 12-column grid that collapses at 1080 px and 760 px. |
 | `icons.js` | `WX.iconSVG(code, isDay, size)`, `WX.WMO` (code → text), `WX.scene(code, isDay)`, `WX.umbrellaSVG()`. |
-| `app.js` | All application logic (one IIFE, no globals besides `WX`). |
+| `sun.js` | `SunCalc`: solar position and sun-event maths (NOAA/Meeus). Pure functions with no DOM access. |
+| `app.js` | All application logic (one IIFE, no globals besides `WX` and `SunCalc`). |
 
 ## How it works
 
@@ -50,6 +51,36 @@ It looks at every hour from now until now + window (1/3/6/12/24 h), using thresh
 | 0 | otherwise | No umbrella needed |
 
 Extra notes appear for gusts ≥ 45 km/h (use a windproof umbrella or jacket), thunder, snow, and strong UV on dry days.
+
+### Sun tracker (`sun.js` + `buildSunTracker` / `updateSunTracker`)
+Everything is calculated in the browser from latitude, longitude and time; no API is involved. It uses the NOAA solar calculator equations (after Meeus), which are accurate to about 1 minute.
+
+1. **Time of year → `SunCalc.solar(t)`**. From the Julian century it derives the sun's mean longitude and anomaly, orbital eccentricity, apparent longitude and obliquity. These give the **declination** δ (how far north or south the sun is overhead) and the **equation of time** (how far sundials run ahead of or behind clocks).
+2. **Live position → `SunCalc.position(t, lat, lon)`**.
+   - True solar time = UTC minutes + equation of time + 4·longitude; the hour angle follows from it.
+   - Elevation: `sin h = sin φ sin δ + cos φ cos δ cos H`, plus a standard atmospheric-refraction correction.
+   - Azimuth is measured clockwise from north.
+3. **Events for the local date → `SunCalc.times(utcMidnight, lat, lon, utcOffset)`**.
+   - Solar noon = 720 − 4·lon − EoT minutes. The UTC offset makes sure it is the noon belonging to the *local* calendar day, which matters near the date line.
+   - Each event solves `cos H = (sin h₀ − sin φ sin δ)/(cos φ cos δ)`, re-evaluating δ at the event time (4 iterations).
+   - Thresholds h₀:
+     - sunrise/sunset: −0.833° (refraction + solar radius)
+     - civil, nautical and astronomical twilight: −6°, −12°, −18°
+     - golden hour: +6°
+   - If |cos H| > 1, the result is reported as **polar day** or **polar night**.
+
+What the card shows:
+- **Elevation curve:** spans sunrise to sunset; for polar days and nights it spans local midnight to midnight. Golden hours are shaded. The path already travelled is drawn solid and the rest dashed. A strip below the horizon (down to −18°) shows how deep the sun is at night.
+- **Sky dome:** a top-down polar plot (zenith in the centre, horizon at the rim) with the day's path, the sunrise and sunset azimuths, and the live sun.
+- **Stats:**
+  - updated every second: elevation and phase, azimuth, shadow length (1/tan h), and a countdown to sunset or sunrise;
+  - fixed for the day: sunrise and sunset (time, azimuth, civil dawn/dusk), solar noon and maximum elevation, day length with the change vs yesterday and tomorrow, golden hours, astronomical twilight.
+- **Day length through the year:** computed for every day of the current year, with today, the longest and shortest days, and midnight-sun or polar-night day counts at high latitudes.
+
+When the static parts are rebuilt:
+- they are rebuilt when the location's calendar date, the location or the window size changes;
+- the SVGs are drawn at real pixel width so text stays readable on phones;
+- the tracker uses the coordinates of the *loaded* dataset, so it never mixes a new location with the previous location's time zone.
 
 ### Live feed
 - **After each refresh:** the current conditions are compared with the previous snapshot. Thresholds: temperature ±0.5 °C, humidity ±4 %, cloud ±15 %, pressure ±0.8 hPa, wind ±6 km/h, or a change of weather code. If nothing changed, it logs "steady".

@@ -138,6 +138,7 @@ h2 { font-size: 15px; color: var(--muted); font-weight: 500; text-transform: upp
     "status status status status status status status status status status status status"
     "hero hero hero hero hero hero hero hero umb umb umb umb"
     "tiles tiles tiles tiles tiles tiles tiles tiles tiles tiles tiles tiles"
+    "sun sun sun sun sun sun sun sun sun sun sun sun"
     "chart chart chart chart chart chart chart chart feed feed feed feed"
     "hourly hourly hourly hourly hourly hourly hourly hourly hourly hourly hourly hourly"
     "daily daily daily daily daily daily daily past past past past past"
@@ -147,6 +148,7 @@ h2 { font-size: 15px; color: var(--muted); font-weight: 500; text-transform: upp
 .hero { grid-area: hero; }
 .umbrella { grid-area: umb; }
 .tiles { grid-area: tiles; }
+.suntrack-card { grid-area: sun; }
 .chart-card { grid-area: chart; }
 .feed-card { grid-area: feed; }
 .hourly-card { grid-area: hourly; }
@@ -252,6 +254,40 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .uv-scale { height: 6px; border-radius: 99px; background: linear-gradient(90deg, #4fd18b, #ffd23f 30%, #ff9a3d 55%, #ff5a5a 75%, #b06bff); position: relative; }
 .uv-scale i { position: absolute; top: 50%; width: 12px; height: 12px; border-radius: 50%; background: #fff; border: 2px solid #0c1a3a; translate: -50% -50%; transition: left .8s; }
 
+/* ---------- Sun tracker ---------- */
+.st-grid { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 18px; }
+.st-curve, .st-dome, .st-year { background: rgba(0,0,0,.14); border: 1px solid var(--stroke); border-radius: 16px; padding: 12px 12px 6px; min-width: 0; }
+.st-label { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; color: var(--muted); margin-bottom: 4px; flex-wrap: wrap; }
+.st-phase { color: var(--warn); font-weight: 600; }
+.st-grid svg, .st-year svg { width: 100%; display: block; overflow: visible; }
+.st-dome svg { max-width: 240px; margin: 0 auto; }
+.st-grid text, .st-year text { font-family: inherit; fill: var(--muted); font-size: 11px; }
+.st-grid .lbl-strong, .st-year .lbl-strong { fill: var(--text); font-weight: 600; }
+.st-grid .grid-line, .st-year .grid-line { stroke: rgba(255,255,255,.07); stroke-width: 1; }
+.st-grid .horizon-line { stroke: rgba(255,255,255,.45); stroke-width: 1.5; }
+.st-grid .below { fill: rgba(5, 10, 30, .35); }
+.st-grid .golden { fill: rgba(255, 170, 60, .16); }
+.st-grid .track-future { fill: none; stroke: rgba(255, 209, 102, .45); stroke-width: 2; stroke-dasharray: 5 5; }
+.st-grid .track-past { fill: none; stroke: #ffc94d; stroke-width: 3; stroke-linecap: round; }
+.st-grid .noon-line { stroke: rgba(255,255,255,.3); stroke-dasharray: 3 4; }
+.st-grid .now-line { stroke: rgba(255,255,255,.55); stroke-width: 1; stroke-dasharray: 2 3; }
+.st-grid .sun-glow { fill: rgba(255, 196, 70, .25); }
+.st-grid .sun-core { fill: #ffd166; stroke: #fff6d8; stroke-width: 1.5; }
+.st-grid .sun-down .sun-core { fill: #8ea0c8; stroke: #c9d4f0; }
+.st-grid .sun-down .sun-glow { fill: rgba(150, 170, 220, .18); }
+.st-grid .dome-ring { fill: none; stroke: rgba(255,255,255,.12); }
+.st-grid .dome-edge { fill: rgba(255,255,255,.03); stroke: rgba(255,255,255,.4); stroke-width: 1.5; }
+.st-grid .dome-ray { stroke: rgba(255,255,255,.35); stroke-dasharray: 2 3; }
+.st-grid .ev-dot { fill: #ff9a3d; }
+.st-stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin: 14px 0; }
+.st-stats .stat b { font-size: 18px; display: block; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.st-stats .stat span { display: block; margin-top: 2px; }
+.st-year .yr-area { fill: rgba(124, 196, 255, .14); }
+.st-year .yr-line { fill: none; stroke: var(--accent); stroke-width: 2; }
+.st-year .yr-today { stroke: #ffd166; stroke-width: 1.5; }
+.st-year .yr-dot { fill: #ffd166; stroke: #0c1a3a; stroke-width: 2; }
+.st-year .yr-ext { fill: var(--accent); }
+
 /* ---------- Chart ---------- */
 .chart-legend-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
 .legend-note { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
@@ -349,6 +385,7 @@ main[aria-busy="true"] .tiles:empty { min-height: 150px; border-radius: var(--ra
       "hero hero hero hero hero hero hero hero hero hero hero hero"
       "umb umb umb umb umb umb umb umb umb umb umb umb"
       "tiles tiles tiles tiles tiles tiles tiles tiles tiles tiles tiles tiles"
+      "sun sun sun sun sun sun sun sun sun sun sun sun"
       "chart chart chart chart chart chart chart chart chart chart chart chart"
       "hourly hourly hourly hourly hourly hourly hourly hourly hourly hourly hourly hourly"
       "feed feed feed feed feed feed past past past past past past"
@@ -362,6 +399,8 @@ main[aria-busy="true"] .tiles:empty { min-height: 150px; border-radius: var(--ra
   .top-actions { margin-left: auto; }
   .layout { padding: 14px 16px 32px; gap: 14px; display: flex; flex-direction: column; }
   .hero { grid-template-columns: 1fr; }
+  .st-grid { grid-template-columns: 1fr; }
+  .st-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .hero-temp { font-size: 68px; }
   .hero-icon .wx-icon { width: 84px; height: 84px; }
   .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }

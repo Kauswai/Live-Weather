@@ -250,7 +250,7 @@
     const { cur } = S.t;
     document.body.className = 'scene-' + WX.scene(cur.wc, cur.day);
     S.umb = computeUmbrella();
-    renderHero(); renderSun(); renderUmbrella(); renderTiles(); renderChart(); renderHourly(); renderDaily(); renderPast(); renderStatus();
+    renderHero(); renderSun(); renderUmbrella(); renderTiles(); updateSunTracker(); renderChart(); renderHourly(); renderDaily(); renderPast(); renderStatus();
   }
 
   function renderHero() {
@@ -618,6 +618,220 @@
     $('#past').innerHTML = stats + cmp;
   }
 
+  /* ---------------- sun tracker ---------------- */
+  const DAY = 86400000;
+  const ST = { key: null, yearKey: null };
+  const svgNS = (tag, attrs = {}, text) => `<${tag} ${Object.entries(attrs).map(([k, v]) => `${k}="${v}"`).join(' ')}>${text ?? ''}</${tag}>`;
+  const durHMS = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 3600)}h ${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}m ${String(s % 60).padStart(2, '0')}s`; };
+  const deltaMS = (ms) => { const s = Math.round(Math.abs(ms) / 1000); return `${ms >= 0 ? '+' : '−'}${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`; };
+  const azTxt = (az) => (num(az) ? `${Math.round(az)}° ${dirName(az)}` : '–');
+  const tOr = (t, alt = '–') => (num(t) ? fmtHM(t) : alt);
+  /** UTC-midnight epoch of the location's current calendar date */
+  function localMidnightUTC(ms) {
+    const key = 'ymd' + TZ; let f = fmtCache.get(key);
+    if (!f) { try { f = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' }); } catch { f = new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit' }); } fmtCache.set(key, f); }
+    return Date.parse(f.format(ms) + 'T00:00:00Z');
+  }
+
+  // curve geometry (viewBox 640×250)
+  const CV = { L: 40, R: 624, TOP: 24, HZ: 185, BOT: 212 };
+  // dome geometry (viewBox 240×240)
+  const DM = { C: 120, R: 98 };
+  const domePt = (az, el) => {
+    const r = el >= 0 ? (DM.R * (90 - el)) / 90 : DM.R + 7;
+    return [DM.C + r * Math.sin(az * Math.PI / 180), DM.C - r * Math.cos(az * Math.PI / 180)];
+  };
+
+  function buildSunTracker(mid) {
+    const { lat, lon } = S.t; const off = S.t.offset ?? 0;
+    const svgW = (el) => Math.max(300, Math.round(el.parentElement.clientWidth - 24));
+    const cw = svgW($("#stCurve")); CV.R = cw - 16; $("#stCurve").setAttribute("viewBox", `0 0 ${cw} 250`);
+    const today = SunCalc.times(mid, lat, lon, off);
+    const yday = SunCalc.times(mid - DAY, lat, lon, off), tmrw = SunCalc.times(mid + DAY, lat, lon, off);
+    const [d0, d1] = today.polar ? [mid - off, mid - off + DAY] : [today.rise, today.set];
+    const yMax = Math.max(15, Math.ceil(Math.max(today.maxEl, 1) / 15) * 15);
+    const X = (t) => CV.L + ((t - d0) / (d1 - d0)) * (CV.R - CV.L);
+    const Y = (e) => (e >= 0 ? CV.HZ - (Math.min(e, yMax) / yMax) * (CV.HZ - CV.TOP) : CV.HZ + (Math.min(-e, 18) / 18) * (CV.BOT - CV.HZ));
+    Object.assign(ST, { today, yday, tmrw, d0, d1, X, Y, mid });
+
+    // ---- elevation curve ----
+    const N = 160, pts = [];
+    for (let k = 0; k <= N; k++) { const t = d0 + ((d1 - d0) * k) / N; pts.push([X(t), Y(SunCalc.position(t, lat, lon).el)]); }
+    const line = 'M' + pts.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join('L');
+    const area = 'M' + pts.map(([x, y]) => `${x.toFixed(1)},${Math.min(y, CV.HZ).toFixed(1)}`).join('L') + `L${CV.R},${CV.HZ}L${CV.L},${CV.HZ}Z`;
+    let g = `<defs><linearGradient id="stFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffc94d" stop-opacity=".35"/><stop offset="1" stop-color="#ff8a5b" stop-opacity=".02"/></linearGradient>
+      <clipPath id="stPastClip"><rect id="stClipRect" x="${CV.L}" y="0" width="0" height="250"/></clipPath></defs>`;
+    g += svgNS('rect', { class: 'below', x: CV.L, y: CV.HZ, width: CV.R - CV.L, height: CV.BOT - CV.HZ });
+    for (let e = 15; e <= yMax; e += 15) {
+      g += svgNS('line', { class: 'grid-line', x1: CV.L, x2: CV.R, y1: Y(e), y2: Y(e) });
+      g += svgNS('text', { x: CV.L - 6, y: Y(e) + 4, 'text-anchor': 'end' }, e + '°');
+    }
+    g += svgNS('text', { x: CV.L - 6, y: CV.HZ + 4, 'text-anchor': 'end' }, '0°');
+    g += svgNS('text', { x: CV.L - 6, y: CV.BOT + 2, 'text-anchor': 'end' }, '−18°');
+    if (!today.polar) {
+      if (num(today.goldenAmEnd)) g += svgNS('rect', { class: 'golden', x: X(d0), y: CV.TOP, width: Math.max(0, X(today.goldenAmEnd) - X(d0)), height: CV.HZ - CV.TOP });
+      if (num(today.goldenPmStart)) g += svgNS('rect', { class: 'golden', x: X(today.goldenPmStart), y: CV.TOP, width: Math.max(0, X(d1) - X(today.goldenPmStart)), height: CV.HZ - CV.TOP });
+    }
+    g += svgNS('path', { d: area, fill: 'url(#stFill)' });
+    g += svgNS('line', { class: 'horizon-line', x1: CV.L, x2: CV.R, y1: CV.HZ, y2: CV.HZ });
+    g += svgNS('path', { class: 'track-future', d: line });
+    g += svgNS('path', { class: 'track-past', d: line, 'clip-path': 'url(#stPastClip)' });
+    if (today.noon >= d0 && today.noon <= d1) {
+      const xn = X(today.noon);
+      g += svgNS('line', { class: 'noon-line', x1: xn, x2: xn, y1: Y(today.maxEl), y2: CV.HZ });
+      g += svgNS('text', { x: xn, y: Math.max(12, Y(today.maxEl) - 10), 'text-anchor': 'middle', class: 'lbl-strong' }, `☀ Solar noon ${esc(fmtHM(today.noon))} · ${today.maxEl < 0 ? "−" : ""}${Math.abs(today.maxEl).toFixed(1)}°`);
+    }
+    // local-hour ticks
+    const span = (d1 - d0) / HOUR, every = span > 16 ? 3 : span > 9 ? 2 : 1;
+    for (let t = Math.ceil((d0 + off) / HOUR) * HOUR - off; t < d1; t += HOUR) {
+      const x = X(t); const h = hourOf(t);
+      g += svgNS('line', { class: 'grid-line', x1: x, x2: x, y1: CV.BOT, y2: CV.BOT + 4 });
+      if (h % every === 0 && x - CV.L > 34 && CV.R - x > 34) g += svgNS('text', { x, y: CV.BOT + 16, 'text-anchor': 'middle' }, esc(fmtH(t)));
+    }
+    if (!today.polar) {
+      g += svgNS('text', { x: CV.L, y: 247, class: 'lbl-strong' }, `↑ Sunrise ${esc(fmtHM(d0))}`);
+      g += svgNS('text', { x: CV.R, y: 247, 'text-anchor': 'end', class: 'lbl-strong' }, `Sunset ${esc(fmtHM(d1))} ↓`);
+    } else {
+      g += svgNS('text', { x: (CV.L + CV.R) / 2, y: 247, 'text-anchor': 'middle', class: 'lbl-strong' }, today.polar === 'day' ? 'Polar day — the sun does not set today (local midnight → midnight)' : 'Polar night — the sun stays below the horizon today');
+    }
+    g += `<line id="stNowLine" class="now-line" x1="0" x2="0" y1="${CV.TOP}" y2="${CV.BOT}"/>
+      <g id="stSunG"><circle class="sun-glow" r="15"/><circle class="sun-core" r="7"/><text id="stSunTxt" class="lbl-strong" text-anchor="middle" y="-20"></text></g>`;
+    $('#stCurve').innerHTML = g;
+
+    // ---- sky dome ----
+    let d = '';
+    d += svgNS('circle', { class: 'dome-edge', cx: DM.C, cy: DM.C, r: DM.R });
+    [30, 60].forEach((e) => {
+      d += svgNS('circle', { class: 'dome-ring', cx: DM.C, cy: DM.C, r: (DM.R * (90 - e)) / 90 });
+      d += svgNS('text', { x: DM.C + 3, y: DM.C - (DM.R * (90 - e)) / 90 + 11 }, e + '°');
+    });
+    d += svgNS('circle', { cx: DM.C, cy: DM.C, r: 2, fill: 'rgba(255,255,255,.5)' });
+    [['N', 0], ['E', 90], ['S', 180], ['W', 270]].forEach(([n, a]) => {
+      const [x, y] = domePt(a, -1).map((v, i) => (i === 0 ? DM.C + (v - DM.C) * 1.11 : DM.C + (v - DM.C) * 1.11));
+      d += svgNS('text', { x, y: y + 4, 'text-anchor': 'middle', class: 'lbl-strong' }, n);
+    });
+    const dp = [];
+    for (let k = 0; k <= 144; k++) { const t = d0 + ((d1 - d0) * k) / 144; const p = SunCalc.position(t, lat, lon); if (p.el >= -0.3) dp.push(domePt(p.az, Math.max(0, p.el))); }
+    if (dp.length > 1) d += svgNS('path', { class: 'track-future', d: 'M' + dp.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join('L') });
+    [[today.riseAz, '↑'], [today.setAz, '↓']].forEach(([az, s]) => {
+      if (!num(az)) return;
+      const [x, y] = domePt(az, 0);
+      d += svgNS('line', { class: 'dome-ray', x1: DM.C, y1: DM.C, x2: x, y2: y });
+      d += svgNS('circle', { class: 'ev-dot', cx: x, cy: y, r: 4 });
+      const [lx, ly] = [DM.C + (x - DM.C) * 0.8, DM.C + (y - DM.C) * 0.8];
+      d += svgNS('text', { x: lx, y: ly + 4, 'text-anchor': 'middle' }, `${s}${Math.round(az)}°`);
+    });
+    d += `<g id="stDomeSun"><circle class="sun-glow" r="13"/><circle class="sun-core" r="6"/></g>`;
+    $('#stDome').innerHTML = d;
+
+    // ---- static stats ----
+    const dl = today.dayLen, dly = dl - yday.dayLen, dlt = tmrw.dayLen - dl;
+    const polarTxt = today.polar === 'day' ? 'Sun stays up all day (polar day)' : 'Sun stays below the horizon (polar night)';
+    const fDeg = (v) => `${v < 0 ? '−' : ''}${Math.abs(v).toFixed(1)}°`;
+    $('#stStats').innerHTML = `
+      <div class="stat"><small>Elevation now</small><b id="stEl">–</b><span id="stElSub"></span></div>
+      <div class="stat"><small>Azimuth now</small><b id="stAz">–</b><span id="stAzSub"></span></div>
+      <div class="stat"><small>Shadow length</small><b id="stShadow">–</b><span id="stShadowSub"></span></div>
+      <div class="stat"><small id="stCountLbl">Daylight left</small><b id="stCount">–</b><span id="stCountSub"></span></div>
+      <div class="stat"><small>Sunrise</small><b>${today.polar ? '—' : esc(fmtHM(today.rise))}</b><span>${today.polar ? polarTxt : `Azimuth ${azTxt(today.riseAz)} · civil dawn ${esc(tOr(today.civilDawn))}`}</span></div>
+      <div class="stat"><small>Sunset</small><b>${today.polar ? '—' : esc(fmtHM(today.set))}</b><span>${today.polar ? polarTxt : `Azimuth ${azTxt(today.setAz)} · civil dusk ${esc(tOr(today.civilDusk))}`}</span></div>
+      <div class="stat"><small>Solar noon</small><b>${esc(fmtHM(today.noon))}</b><span>Max elevation ${fDeg(today.maxEl)}</span></div>
+      <div class="stat"><small>Day length</small><b>${durHMS(dl)}</b><span>${deltaMS(dly)} vs yesterday · tomorrow ${deltaMS(dlt)}</span></div>
+      <div class="stat"><small>Golden hour</small><b>${today.polar ? '—' : `${esc(tOr(today.goldenPmStart))}–${esc(fmtHM(today.set))}`}</b><span>${today.polar ? '' : `Morning ${esc(fmtHM(today.rise))}–${esc(tOr(today.goldenAmEnd))}`}</span></div>
+      <div class="stat"><small>Twilight</small><b>${esc(tOr(today.astroDawn, '—'))} · ${esc(tOr(today.astroDusk, '—'))}</b><span>Astronomical dawn · dusk (sun 18° down)</span></div>`;
+    const doy = Math.floor((mid - Date.UTC(new Date(mid).getUTCFullYear(), 0, 1)) / DAY) + 1;
+    $('#stSub').textContent = `${Math.abs(lat).toFixed(3)}°${lat >= 0 ? 'N' : 'S'} ${Math.abs(lon).toFixed(3)}°${lon >= 0 ? 'E' : 'W'} · day ${doy} of the year · solar declination ${today.decl >= 0 ? '+' : '−'}${Math.abs(today.decl).toFixed(2)}° · equation of time ${deltaMS(today.eot * 60000)}`;
+
+    buildYearChart(mid);
+  }
+
+  function buildYearChart(mid) {
+    const { lat, lon } = S.t; const off = S.t.offset ?? 0;
+    const yr = new Date(mid).getUTCFullYear();
+    const key = `${lat.toFixed(2)},${lon.toFixed(2)},${yr}`;
+    const jan1 = Date.UTC(yr, 0, 1), nDays = (Date.UTC(yr + 1, 0, 1) - jan1) / DAY;
+    const todayK = Math.round((mid - jan1) / DAY);
+    const yw = Math.max(300, Math.round($("#stYear").parentElement.clientWidth - 24));
+    $("#stYear").setAttribute("viewBox", `0 0 ${yw} 130`);
+    const W = { L: 34, R: yw - 10, TOP: 8, BOT: 100 };
+    const X = (k) => W.L + (k / (nDays - 1)) * (W.R - W.L);
+    const Y = (h) => W.BOT - (h / 24) * (W.BOT - W.TOP);
+    if (ST.yearKey !== key) {
+      ST.yearKey = key;
+      ST.yearDL = Array.from({ length: nDays }, (_, k) => SunCalc.times(jan1 + k * DAY, lat, lon, off).dayLen / HOUR);
+    }
+    const dl = ST.yearDL;
+    let iMin = 0, iMax = 0; dl.forEach((v, k) => { if (v < dl[iMin]) iMin = k; if (v > dl[iMax]) iMax = k; });
+    const md = (k) => new Date(jan1 + k * DAY).toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' });
+    const hm = (h) => `${Math.floor(h)}h ${String(Math.round((h % 1) * 60)).padStart(2, '0')}m`;
+    let g = '';
+    [0, 6, 12, 18, 24].forEach((h) => { g += svgNS('line', { class: 'grid-line', x1: W.L, x2: W.R, y1: Y(h), y2: Y(h) }) + svgNS('text', { x: W.L - 5, y: Y(h) + 4, 'text-anchor': 'end' }, h + 'h'); });
+    for (let m = 0; m < 12; m++) {
+      const k = (Date.UTC(yr, m, 1) - jan1) / DAY;
+      g += svgNS('line', { class: 'grid-line', x1: X(k), x2: X(k), y1: W.TOP, y2: W.BOT + 4 });
+      g += svgNS('text', { x: X(k) + 3, y: W.BOT + 16 }, new Date(Date.UTC(yr, m, 1)).toLocaleDateString(undefined, { month: 'short', timeZone: 'UTC' }));
+    }
+    const pts = dl.map((v, k) => `${X(k).toFixed(1)},${Y(v).toFixed(1)}`);
+    g += svgNS('path', { class: 'yr-area', d: `M${W.L},${Y(0)}L${pts.join('L')}L${W.R},${Y(0)}Z` });
+    g += svgNS('path', { class: 'yr-line', d: 'M' + pts.join('L') });
+    [iMin, iMax].forEach((k) => { g += svgNS('circle', { class: 'yr-ext', cx: X(k), cy: Y(dl[k]), r: 3.5 }); });
+    const tx = X(todayK), ty = Y(dl[todayK] ?? 0);
+    g += svgNS('line', { class: 'yr-today', x1: tx, x2: tx, y1: W.TOP, y2: W.BOT });
+    g += svgNS('circle', { class: 'yr-dot', cx: tx, cy: ty, r: 5 });
+    g += svgNS('text', { x: tx + (tx > W.R - 120 ? -8 : 8), y: Math.max(W.TOP + 10, ty - 8), 'text-anchor': tx > W.R - 120 ? 'end' : 'start', class: 'lbl-strong' }, `Today ${hm(dl[todayK] ?? 0)}`);
+    $('#stYear').innerHTML = g;
+    const nSun = dl.filter((v) => v >= 23.99).length, nNight = dl.filter((v) => v <= 0.01).length;
+    $('#stYearNote').textContent = [
+      nSun ? `Midnight sun ${nSun} days/yr` : `Longest ${md(iMax)} · ${hm(dl[iMax])}`,
+      nNight ? `Polar night ${nNight} days/yr` : `Shortest ${md(iMin)} · ${hm(dl[iMin])}`,
+    ].join('  ·  ');
+  }
+
+  /** live part — runs every second */
+  function updateSunTracker() {
+    if (!S.t || typeof SunCalc === 'undefined') return;
+    const now = Date.now(); const mid = localMidnightUTC(now);
+    const key = `${S.t.lat.toFixed(4)},${S.t.lon.toFixed(4)},${TZ},${mid}`;
+    if (ST.key !== key) { ST.key = key; buildSunTracker(mid); }
+    const { today, tmrw, d0, d1, X, Y } = ST;
+    const p = SunCalc.position(now, S.t.lat, S.t.lon);
+    const up = p.el > -0.833 + 0.27; // apparent elevation of the sun's centre at rise/set ≈ −0.56°
+    const x = X(clamp(now, d0, d1)), y = Y(p.el);
+
+    const sunG = $('#stSunG'); if (!sunG) return;
+    sunG.setAttribute('transform', `translate(${x.toFixed(1)} ${y.toFixed(1)})`);
+    sunG.classList.toggle('sun-down', p.el < 0);
+    const txt = $('#stSunTxt'); txt.textContent = `${p.el.toFixed(1)}°`; txt.setAttribute('y', p.el < 0 ? 30 : -20);
+    const nl = $('#stNowLine'); nl.setAttribute('x1', x.toFixed(1)); nl.setAttribute('x2', x.toFixed(1)); nl.style.display = now >= d0 && now <= d1 ? '' : 'none';
+    $('#stClipRect').setAttribute('width', Math.max(0, x - CV.L).toFixed(1));
+
+    const [dx, dy] = domePt(p.az, p.el);
+    const ds = $('#stDomeSun'); ds.setAttribute('transform', `translate(${dx.toFixed(1)} ${dy.toFixed(1)})`); ds.classList.toggle('sun-down', p.el < 0);
+
+    // countdown to the next event
+    let lbl, target, sub;
+    if (today.polar === 'day') { lbl = 'Polar day'; target = null; sub = 'Sun stays up all day'; }
+    else if (today.polar === 'night') { lbl = 'Polar night'; target = null; sub = 'Sun stays below the horizon'; }
+    else if (now < today.rise) { lbl = 'Sunrise in'; target = today.rise; sub = `Sunrise at ${fmtHM(today.rise)}`; }
+    else if (now < today.set) { lbl = 'Daylight left'; target = today.set; sub = `${Math.round(((now - today.rise) / today.dayLen) * 100)}% of daylight elapsed`; }
+    else { lbl = 'Sunrise in'; target = tmrw.rise; sub = num(tmrw.rise) ? `Tomorrow at ${fmtHM(tmrw.rise)}` : 'No sunrise tomorrow'; }
+    $('#stCountLbl').textContent = lbl;
+    $('#stCount').textContent = num(target) ? durHMS(target - now) : '—';
+    $('#stCountSub').textContent = sub;
+
+    const ph = SunCalc.phase(p.el);
+    $('#stEl').textContent = `${p.el >= 0 ? '' : '−'}${Math.abs(p.el).toFixed(2)}°`;
+    $('#stElSub').textContent = up ? `${ph} · ${p.ha < 0 ? 'rising' : 'descending'}` : `${ph} · below horizon`;
+    $('#stAz').textContent = `${p.az.toFixed(1)}°`;
+    $('#stAzSub').textContent = `${dirName(p.az)} · ${p.ha < 0 ? 'before' : 'after'} solar noon`;
+    if (p.el > 0.5) {
+      const r = 1 / Math.tan(p.el * Math.PI / 180);
+      $('#stShadow').textContent = `${r < 10 ? r.toFixed(2) : Math.round(r)}× height`;
+      $('#stShadowSub').textContent = `A 1.7 m person casts ${(1.7 * r).toFixed(1)} m · pointing ${dirName((p.az + 180) % 360)}`;
+    } else { $('#stShadow').textContent = '—'; $('#stShadowSub').textContent = 'Sun too low for a defined shadow'; }
+    $('#stPhase').textContent = `${ph}${num(target) ? ` · ${lbl.toLowerCase()} ${dur(target - now)}` : ''}`;
+  }
+
   function renderStatus() {
     const pill = $('#livePill'); pill.className = 'live-pill';
     const L = S.loc;
@@ -636,6 +850,7 @@
       $('#updated').textContent = `Updated ${ago(S.lastFetch)}`;
       const left = S.nextFetch - Date.now();
       $('#nextRefresh').textContent = S.fetching ? 'Updating…' : left > 0 && left < Infinity ? `Next update in ${Math.floor(left / 60e3)}:${String(Math.floor((left % 60e3) / 1000)).padStart(2, '0')}` : '';
+      if (!document.hidden) updateSunTracker();
     }
     if (Date.now() >= S.nextFetch && !document.hidden && !S.fetching) refresh('auto');
   }
@@ -719,7 +934,7 @@
       if (token !== S.fetchToken) return; // superseded by a newer request
       if (place) Object.assign(loc, place);
       store.set('lastLoc', { lat: loc.lat, lon: loc.lon, name: loc.name, sub: loc.sub });
-      S.t = processData(fc); S.t.offset = fc.utc_offset_seconds * 1000; S.aq = aq;
+      S.t = processData(fc); S.t.offset = fc.utc_offset_seconds * 1000; S.t.lat = loc.lat; S.t.lon = loc.lon; S.aq = aq;
       S.lastFetch = Date.now(); S.nextFetch = S.lastFetch + REFRESH_MS;
       const first = !S.prevSnap;
       renderAll();
@@ -880,6 +1095,12 @@
   });
   $('#gateRetry').addEventListener('click', startGPS);
   $('#gateSearch').addEventListener('click', () => { hideGate(); $('#placeName').textContent = 'Choose a location'; $('#placeSub').textContent = 'Search for a city above'; input.focus(); });
+
+  let resizeTimer;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => { ST.key = null; updateSunTracker(); }, 200); // sun SVGs are sized in real pixels
+  });
 
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden && S.loc && Date.now() - S.lastFetch > REFRESH_MS) refresh('auto');
