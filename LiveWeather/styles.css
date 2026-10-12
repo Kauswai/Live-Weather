@@ -138,10 +138,10 @@ h2 { font-size: 15px; color: var(--muted); font-weight: 500; text-transform: upp
     "status status status status status status status status status status status status"
     "hero hero hero hero hero hero hero hero umb umb umb umb"
     "tiles tiles tiles tiles tiles tiles tiles tiles tiles tiles tiles tiles"
-    "sun sun sun sun sun sun sun sun sun sun sun sun"
     "chart chart chart chart chart chart chart chart feed feed feed feed"
     "hourly hourly hourly hourly hourly hourly hourly hourly hourly hourly hourly hourly"
     "daily daily daily daily daily daily daily past past past past past"
+    "sun sun sun sun sun sun sun sun sun sun sun sun"
     "foot foot foot foot foot foot foot foot foot foot foot foot";
 }
 .status-line { grid-area: status; }
@@ -279,7 +279,24 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .st-grid .dome-edge { fill: rgba(255,255,255,.03); stroke: rgba(255,255,255,.4); stroke-width: 1.5; }
 .st-grid .dome-ray { stroke: rgba(255,255,255,.35); stroke-dasharray: 2 3; }
 .st-grid .ev-dot { fill: #ff9a3d; }
-.st-stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin: 14px 0; }
+.st-stats { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; margin: 14px 0; }
+@media (max-width: 1080px) { .st-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.st-curve, .st-year { position: relative; }
+#stCurve, #stYear { cursor: crosshair; touch-action: pan-y; }
+.st-tip { position: absolute; z-index: 5; pointer-events: none; min-width: 170px; padding: 9px 11px; border-radius: 8px;
+  background: rgba(10, 16, 34, .94); border: 1px solid rgba(255,255,255,.15); box-shadow: 0 6px 20px rgba(0,0,0,.35);
+  font-size: 12.5px; line-height: 1.55; color: rgba(228,236,255,.9); white-space: nowrap; }
+.st-tip b { color: #fff; display: block; margin-bottom: 2px; font-size: 13px; }
+.st-tip i { font-style: normal; display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; border: 1px solid rgba(255,255,255,.5); }
+.st-tip .tag { color: var(--faint); font-size: 11px; margin-left: 4px; }
+.st-label .key { display: inline-block; width: 12px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 5px; }
+.st-label .key.k-day { background: var(--accent); }
+.st-label .key.k-el { background: #ffc94d; }
+.st-grid .hover-line, .st-year .hover-line { stroke: rgba(255,255,255,.7); stroke-width: 1; }
+.st-grid .hover-dot { fill: #fff; stroke: #ffb020; stroke-width: 2; }
+.st-year .yr-el { fill: none; stroke: #ffc94d; stroke-width: 2; }
+.st-year .yr-el-ext { fill: #ffc94d; }
+.st-year .hover-dot { fill: #fff; stroke-width: 2; }
 .st-stats .stat b { font-size: 18px; display: block; margin-top: 2px; font-variant-numeric: tabular-nums; }
 .st-stats .stat span { display: block; margin-top: 2px; }
 .st-year .yr-area { fill: rgba(124, 196, 255, .14); }
@@ -385,11 +402,11 @@ main[aria-busy="true"] .tiles:empty { min-height: 150px; border-radius: var(--ra
       "hero hero hero hero hero hero hero hero hero hero hero hero"
       "umb umb umb umb umb umb umb umb umb umb umb umb"
       "tiles tiles tiles tiles tiles tiles tiles tiles tiles tiles tiles tiles"
-      "sun sun sun sun sun sun sun sun sun sun sun sun"
       "chart chart chart chart chart chart chart chart chart chart chart chart"
       "hourly hourly hourly hourly hourly hourly hourly hourly hourly hourly hourly hourly"
       "feed feed feed feed feed feed past past past past past past"
       "daily daily daily daily daily daily daily daily daily daily daily daily"
+      "sun sun sun sun sun sun sun sun sun sun sun sun"
       "foot foot foot foot foot foot foot foot foot foot foot foot";
   }
 }

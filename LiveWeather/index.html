@@ -128,29 +128,6 @@
     <!-- Metric tiles -->
     <section class="tiles" id="tiles" aria-label="Current parameters"></section>
 
-    <!-- Sun tracker -->
-    <section class="card suntrack-card">
-      <div class="card-head wrap">
-        <h2>Sun tracker</h2>
-        <span class="muted small" id="stSub">—</span>
-      </div>
-      <div class="st-grid">
-        <div class="st-curve">
-          <div class="st-label"><span>Sun elevation · sunrise → sunset · <span style="color:#ffb84d">shaded = golden hour</span></span><span id="stPhase" class="st-phase">—</span></div>
-          <svg id="stCurve" viewBox="0 0 640 250" aria-label="Sun elevation through the day"></svg>
-        </div>
-        <div class="st-dome">
-          <div class="st-label"><span>Sky path (from above)</span></div>
-          <svg id="stDome" viewBox="0 0 240 240" aria-label="Sun path across the sky"></svg>
-        </div>
-      </div>
-      <div class="st-stats" id="stStats"></div>
-      <div class="st-year">
-        <div class="st-label"><span>Day length through the year</span><span id="stYearNote" class="muted"></span></div>
-        <svg id="stYear" viewBox="0 0 640 130" aria-label="Day length over the year"></svg>
-      </div>
-    </section>
-
     <!-- Timeline chart -->
     <section class="card chart-card">
       <div class="card-head wrap">
@@ -200,6 +177,31 @@
     <section class="card past-card">
       <div class="card-head"><h2>Looking back</h2><span class="muted small">Last 48 hours</span></div>
       <div id="past" class="past"></div>
+    </section>
+
+    <!-- Sun tracker -->
+    <section class="card suntrack-card">
+      <div class="card-head wrap">
+        <h2>Sun tracker</h2>
+        <span class="muted small" id="stSub">—</span>
+      </div>
+      <div class="st-grid">
+        <div class="st-curve">
+          <div class="st-label"><span>Sun elevation · sunrise → sunset · <span style="color:#ffb84d">shaded = golden hour</span> · hover for past/future angle</span><span id="stPhase" class="st-phase">—</span></div>
+          <svg id="stCurve" viewBox="0 0 640 250" aria-label="Sun elevation through the day"></svg>
+          <div class="st-tip" id="stCurveTip" hidden></div>
+        </div>
+        <div class="st-dome">
+          <div class="st-label"><span>Sky path (from above)</span></div>
+          <svg id="stDome" viewBox="0 0 240 240" aria-label="Sun path across the sky"></svg>
+        </div>
+      </div>
+      <div class="st-stats" id="stStats"></div>
+      <div class="st-year">
+        <div class="st-label"><span><span class="key k-day"></span>Day length · <span class="key k-el"></span>Max sun angle (solar noon) through the year · hover any day</span><span id="stYearNote" class="muted"></span></div>
+        <svg id="stYear" viewBox="0 0 640 150" aria-label="Day length and maximum sun angle over the year"></svg>
+        <div class="st-tip" id="stYearTip" hidden></div>
+      </div>
     </section>
 
     <footer class="foot">

@@ -652,7 +652,7 @@
     const yMax = Math.max(15, Math.ceil(Math.max(today.maxEl, 1) / 15) * 15);
     const X = (t) => CV.L + ((t - d0) / (d1 - d0)) * (CV.R - CV.L);
     const Y = (e) => (e >= 0 ? CV.HZ - (Math.min(e, yMax) / yMax) * (CV.HZ - CV.TOP) : CV.HZ + (Math.min(-e, 18) / 18) * (CV.BOT - CV.HZ));
-    Object.assign(ST, { today, yday, tmrw, d0, d1, X, Y, mid });
+    Object.assign(ST, { today, yday, tmrw, d0, d1, X, Y, mid, lat, lon, off });
 
     // ---- elevation curve ----
     const N = 160, pts = [];
@@ -695,8 +695,10 @@
       g += svgNS('text', { x: (CV.L + CV.R) / 2, y: 247, 'text-anchor': 'middle', class: 'lbl-strong' }, today.polar === 'day' ? 'Polar day — the sun does not set today (local midnight → midnight)' : 'Polar night — the sun stays below the horizon today');
     }
     g += `<line id="stNowLine" class="now-line" x1="0" x2="0" y1="${CV.TOP}" y2="${CV.BOT}"/>
-      <g id="stSunG"><circle class="sun-glow" r="15"/><circle class="sun-core" r="7"/><text id="stSunTxt" class="lbl-strong" text-anchor="middle" y="-20"></text></g>`;
+      <g id="stSunG"><circle class="sun-glow" r="15"/><circle class="sun-core" r="7"/><text id="stSunTxt" class="lbl-strong" text-anchor="middle" y="-20"></text></g>
+      <g id="stHover" style="display:none"><line id="stHoverLine" class="hover-line" x1="0" x2="0" y1="${CV.TOP}" y2="${CV.BOT}"/><circle id="stHoverDot" class="hover-dot" r="5"/></g>`;
     $('#stCurve').innerHTML = g;
+    $('#stCurveTip').hidden = true;
 
     // ---- sky dome ----
     let d = '';
@@ -722,12 +724,15 @@
       d += svgNS('text', { x: lx, y: ly + 4, 'text-anchor': 'middle' }, `${s}${Math.round(az)}°`);
     });
     d += `<g id="stDomeSun"><circle class="sun-glow" r="13"/><circle class="sun-core" r="6"/></g>`;
+    d += `<circle id="stDomeHover" class="hover-dot" r="5" style="display:none"/>`;
     $('#stDome').innerHTML = d;
 
     // ---- static stats ----
+    const Yr = yearData(mid);
     const dl = today.dayLen, dly = dl - yday.dayLen, dlt = tmrw.dayLen - dl;
     const polarTxt = today.polar === 'day' ? 'Sun stays up all day (polar day)' : 'Sun stays below the horizon (polar night)';
-    const fDeg = (v) => `${v < 0 ? '−' : ''}${Math.abs(v).toFixed(1)}°`;
+    const noonAz = SunCalc.position(today.noon, lat, lon).az;
+    const vsPeak = today.maxEl - Yr.el[Yr.iElMax];
     $('#stStats').innerHTML = `
       <div class="stat"><small>Elevation now</small><b id="stEl">–</b><span id="stElSub"></span></div>
       <div class="stat"><small>Azimuth now</small><b id="stAz">–</b><span id="stAzSub"></span></div>
@@ -735,57 +740,157 @@
       <div class="stat"><small id="stCountLbl">Daylight left</small><b id="stCount">–</b><span id="stCountSub"></span></div>
       <div class="stat"><small>Sunrise</small><b>${today.polar ? '—' : esc(fmtHM(today.rise))}</b><span>${today.polar ? polarTxt : `Azimuth ${azTxt(today.riseAz)} · civil dawn ${esc(tOr(today.civilDawn))}`}</span></div>
       <div class="stat"><small>Sunset</small><b>${today.polar ? '—' : esc(fmtHM(today.set))}</b><span>${today.polar ? polarTxt : `Azimuth ${azTxt(today.setAz)} · civil dusk ${esc(tOr(today.civilDusk))}`}</span></div>
-      <div class="stat"><small>Solar noon</small><b>${esc(fmtHM(today.noon))}</b><span>Max elevation ${fDeg(today.maxEl)}</span></div>
+      <div class="stat"><small>Solar noon</small><b>${esc(fmtHM(today.noon))}</b><span>Sun due ${dirName(noonAz)} (${Math.round(noonAz)}°) · ${deltaMS(today.noon - (mid - off + DAY / 2))} vs clock noon</span></div>
+      <div class="stat"><small>Max sun angle · today</small><b>${fDeg(today.maxEl)}</b><span>${Math.abs(vsPeak) < 0.05 ? 'Highest of the year' : `${fDeg(vsPeak)} vs year peak`} · tomorrow ${fDeg(tmrw.maxEl)}</span></div>
+      <div class="stat"><small>Max sun angle · ${Yr.yr}</small><b>${fDeg(Yr.el[Yr.iElMax])}</b><span>Peak ${Yr.md(Yr.iElMax)}${Yr.nZenith ? ` · overhead (90°) on ${Yr.nZenith} day${Yr.nZenith > 1 ? 's' : ''}` : ''} · lowest noon ${fDeg(Yr.el[Yr.iElMin])} ${Yr.md(Yr.iElMin)}</span></div>
       <div class="stat"><small>Day length</small><b>${durHMS(dl)}</b><span>${deltaMS(dly)} vs yesterday · tomorrow ${deltaMS(dlt)}</span></div>
       <div class="stat"><small>Golden hour</small><b>${today.polar ? '—' : `${esc(tOr(today.goldenPmStart))}–${esc(fmtHM(today.set))}`}</b><span>${today.polar ? '' : `Morning ${esc(fmtHM(today.rise))}–${esc(tOr(today.goldenAmEnd))}`}</span></div>
       <div class="stat"><small>Twilight</small><b>${esc(tOr(today.astroDawn, '—'))} · ${esc(tOr(today.astroDusk, '—'))}</b><span>Astronomical dawn · dusk (sun 18° down)</span></div>`;
     const doy = Math.floor((mid - Date.UTC(new Date(mid).getUTCFullYear(), 0, 1)) / DAY) + 1;
     $('#stSub').textContent = `${Math.abs(lat).toFixed(3)}°${lat >= 0 ? 'N' : 'S'} ${Math.abs(lon).toFixed(3)}°${lon >= 0 ? 'E' : 'W'} · day ${doy} of the year · solar declination ${today.decl >= 0 ? '+' : '−'}${Math.abs(today.decl).toFixed(2)}° · equation of time ${deltaMS(today.eot * 60000)}`;
 
-    buildYearChart(mid);
+    buildYearChart(Yr);
   }
 
-  function buildYearChart(mid) {
+  const fDeg = (v) => `${v < 0 ? '−' : ''}${Math.abs(v).toFixed(1)}°`;
+  const hmH = (h) => { const m = Math.round(h * 60); return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`; };
+
+  /** day length (h) and noon sun angle (°) for every day of the location's current year — cached per place/year */
+  function yearData(mid) {
     const { lat, lon } = S.t; const off = S.t.offset ?? 0;
     const yr = new Date(mid).getUTCFullYear();
     const key = `${lat.toFixed(2)},${lon.toFixed(2)},${yr}`;
     const jan1 = Date.UTC(yr, 0, 1), nDays = (Date.UTC(yr + 1, 0, 1) - jan1) / DAY;
-    const todayK = Math.round((mid - jan1) / DAY);
-    const yw = Math.max(300, Math.round($("#stYear").parentElement.clientWidth - 24));
-    $("#stYear").setAttribute("viewBox", `0 0 ${yw} 130`);
-    const W = { L: 34, R: yw - 10, TOP: 8, BOT: 100 };
-    const X = (k) => W.L + (k / (nDays - 1)) * (W.R - W.L);
-    const Y = (h) => W.BOT - (h / 24) * (W.BOT - W.TOP);
-    if (ST.yearKey !== key) {
-      ST.yearKey = key;
-      ST.yearDL = Array.from({ length: nDays }, (_, k) => SunCalc.times(jan1 + k * DAY, lat, lon, off).dayLen / HOUR);
+    if (!ST.yr || ST.yr.key !== key) {
+      const dl = [], el = [];
+      for (let k = 0; k < nDays; k++) { const t = SunCalc.times(jan1 + k * DAY, lat, lon, off); dl.push(t.dayLen / HOUR); el.push(t.maxEl); }
+      const arg = (a, better) => a.reduce((b, v, k) => (better(v, a[b]) ? k : b), 0);
+      ST.yr = {
+        key, yr, jan1, nDays, dl, el, lat, lon, off,
+        iMin: arg(dl, (a, b) => a < b), iMax: arg(dl, (a, b) => a > b),
+        iElMin: arg(el, (a, b) => a < b), iElMax: arg(el, (a, b) => a > b),
+        nZenith: el.filter((v) => v >= 89.5).length,
+        md: (k) => new Date(jan1 + k * DAY).toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' }),
+      };
     }
-    const dl = ST.yearDL;
-    let iMin = 0, iMax = 0; dl.forEach((v, k) => { if (v < dl[iMin]) iMin = k; if (v > dl[iMax]) iMax = k; });
-    const md = (k) => new Date(jan1 + k * DAY).toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' });
-    const hm = (h) => `${Math.floor(h)}h ${String(Math.round((h % 1) * 60)).padStart(2, '0')}m`;
+    ST.yr.todayK = Math.round((mid - jan1) / DAY);
+    return ST.yr;
+  }
+
+  function buildYearChart(Yr) {
+    const { yr, jan1, nDays, dl, el, todayK, iMin, iMax, iElMin, iElMax, md } = Yr;
+    const yw = Math.max(300, Math.round($('#stYear').parentElement.clientWidth - 24));
+    $('#stYear').setAttribute('viewBox', `0 0 ${yw} 150`);
+    const W = { L: 34, R: yw - 34, TOP: 10, BOT: 118 };
+    const X = (k) => W.L + (k / (nDays - 1)) * (W.R - W.L);
+    const Yh = (h) => W.BOT - (h / 24) * (W.BOT - W.TOP);                       // day length axis (left, 0–24 h)
+    const Ye = (e) => W.BOT - (clamp(e, 0, 90) / 90) * (W.BOT - W.TOP);         // sun angle axis (right, 0–90°)
+    Object.assign(Yr, { W, X, Yh, Ye });
     let g = '';
-    [0, 6, 12, 18, 24].forEach((h) => { g += svgNS('line', { class: 'grid-line', x1: W.L, x2: W.R, y1: Y(h), y2: Y(h) }) + svgNS('text', { x: W.L - 5, y: Y(h) + 4, 'text-anchor': 'end' }, h + 'h'); });
+    [0, 6, 12, 18, 24].forEach((h) => { g += svgNS('line', { class: 'grid-line', x1: W.L, x2: W.R, y1: Yh(h), y2: Yh(h) }) + svgNS('text', { x: W.L - 5, y: Yh(h) + 4, 'text-anchor': 'end' }, h + 'h'); });
+    [0, 45, 90].forEach((e) => { g += svgNS('text', { x: W.R + 5, y: Ye(e) + 4, fill: '#ffc94d' }, e + '°'); });
     for (let m = 0; m < 12; m++) {
       const k = (Date.UTC(yr, m, 1) - jan1) / DAY;
       g += svgNS('line', { class: 'grid-line', x1: X(k), x2: X(k), y1: W.TOP, y2: W.BOT + 4 });
       g += svgNS('text', { x: X(k) + 3, y: W.BOT + 16 }, new Date(Date.UTC(yr, m, 1)).toLocaleDateString(undefined, { month: 'short', timeZone: 'UTC' }));
     }
-    const pts = dl.map((v, k) => `${X(k).toFixed(1)},${Y(v).toFixed(1)}`);
-    g += svgNS('path', { class: 'yr-area', d: `M${W.L},${Y(0)}L${pts.join('L')}L${W.R},${Y(0)}Z` });
-    g += svgNS('path', { class: 'yr-line', d: 'M' + pts.join('L') });
-    [iMin, iMax].forEach((k) => { g += svgNS('circle', { class: 'yr-ext', cx: X(k), cy: Y(dl[k]), r: 3.5 }); });
-    const tx = X(todayK), ty = Y(dl[todayK] ?? 0);
+    const ptsH = dl.map((v, k) => `${X(k).toFixed(1)},${Yh(v).toFixed(1)}`);
+    const ptsE = el.map((v, k) => `${X(k).toFixed(1)},${Ye(v).toFixed(1)}`);
+    g += svgNS('path', { class: 'yr-area', d: `M${W.L},${Yh(0)}L${ptsH.join('L')}L${W.R},${Yh(0)}Z` });
+    g += svgNS('path', { class: 'yr-line', d: 'M' + ptsH.join('L') });
+    g += svgNS('path', { class: 'yr-el', d: 'M' + ptsE.join('L') });
+    [iMin, iMax].forEach((k) => { g += svgNS('circle', { class: 'yr-ext', cx: X(k), cy: Yh(dl[k]), r: 3.5 }); });
+    [iElMin, iElMax].forEach((k) => { g += svgNS('circle', { class: 'yr-el-ext', cx: X(k), cy: Ye(el[k]), r: 3.5 }); });
+    const tx = X(todayK), ty = Yh(dl[todayK] ?? 0);
     g += svgNS('line', { class: 'yr-today', x1: tx, x2: tx, y1: W.TOP, y2: W.BOT });
     g += svgNS('circle', { class: 'yr-dot', cx: tx, cy: ty, r: 5 });
-    g += svgNS('text', { x: tx + (tx > W.R - 120 ? -8 : 8), y: Math.max(W.TOP + 10, ty - 8), 'text-anchor': tx > W.R - 120 ? 'end' : 'start', class: 'lbl-strong' }, `Today ${hm(dl[todayK] ?? 0)}`);
+    g += svgNS('circle', { class: 'yr-dot', cx: tx, cy: Ye(el[todayK] ?? 0), r: 5 });
+    g += svgNS('text', { x: tx + (tx > W.R - 150 ? -8 : 8), y: W.TOP + 10, 'text-anchor': tx > W.R - 150 ? 'end' : 'start', class: 'lbl-strong' }, `Today ${hmH(dl[todayK] ?? 0)} · ${fDeg(el[todayK] ?? 0)}`);
+    g += `<g id="stYearHover" style="display:none"><line id="stYHLine" class="hover-line" x1="0" x2="0" y1="${W.TOP}" y2="${W.BOT}"/>
+      <circle id="stYHDay" class="hover-dot" r="4.5" stroke="#7cc4ff"/><circle id="stYHEl" class="hover-dot" r="4.5" stroke="#ffc94d"/></g>`;
     $('#stYear').innerHTML = g;
+    $('#stYearTip').hidden = true;
     const nSun = dl.filter((v) => v >= 23.99).length, nNight = dl.filter((v) => v <= 0.01).length;
     $('#stYearNote').textContent = [
-      nSun ? `Midnight sun ${nSun} days/yr` : `Longest ${md(iMax)} · ${hm(dl[iMax])}`,
-      nNight ? `Polar night ${nNight} days/yr` : `Shortest ${md(iMin)} · ${hm(dl[iMin])}`,
+      nSun ? `Midnight sun ${nSun} days/yr` : `Longest ${md(iMax)} · ${hmH(dl[iMax])}`,
+      nNight ? `Polar night ${nNight} days/yr` : `Shortest ${md(iMin)} · ${hmH(dl[iMin])}`,
+      `Highest sun ${md(iElMax)} · ${fDeg(el[iElMax])}`,
     ].join('  ·  ');
   }
+
+  /* ---- hover tooltips (past/future sun angle, any day of the year) ---- */
+  function svgX(svg, e) {
+    const r = svg.getBoundingClientRect(); const vb = svg.viewBox.baseVal;
+    return ((e.clientX - r.left) * vb.width) / r.width;
+  }
+  function placeTip(tip, svg, sx, sy) {
+    tip.hidden = false;
+    const r = svg.getBoundingClientRect(), pr = tip.parentElement.getBoundingClientRect(), vb = svg.viewBox.baseVal;
+    const px = r.left - pr.left + (sx * r.width) / vb.width, py = r.top - pr.top + (sy * r.height) / vb.height;
+    const w = tip.offsetWidth, h = tip.offsetHeight;
+    let left = px + 16; if (left + w > pr.width - 4) left = px - 16 - w;
+    tip.style.left = Math.max(4, left) + 'px';
+    tip.style.top = clamp(py - h / 2, 4, Math.max(4, pr.height - h - 4)) + 'px';
+  }
+  const relTag = (t) => { const d = t - Date.now(); return Math.abs(d) < 60e3 ? 'now' : d > 0 ? `in ${dur(d)}` : `${dur(d)} ago`; };
+
+  function curveHover(e) {
+    if (!ST.today || !ST.X) return;
+    const svg = $('#stCurve'); const x = svgX(svg, e);
+    const t = ST.d0 + clamp((x - CV.L) / (CV.R - CV.L), 0, 1) * (ST.d1 - ST.d0);
+    const p = SunCalc.position(t, ST.lat, ST.lon);
+    const sx = ST.X(t), sy = ST.Y(p.el);
+    $('#stHover').style.display = '';
+    $('#stHoverLine').setAttribute('x1', sx.toFixed(1)); $('#stHoverLine').setAttribute('x2', sx.toFixed(1));
+    $('#stHoverDot').setAttribute('cx', sx.toFixed(1)); $('#stHoverDot').setAttribute('cy', sy.toFixed(1));
+    const [dx, dy] = domePt(p.az, p.el); const dh = $('#stDomeHover');
+    dh.style.display = ''; dh.setAttribute('cx', dx.toFixed(1)); dh.setAttribute('cy', dy.toFixed(1));
+    const shadow = p.el > 0.5 ? `${(1 / Math.tan(p.el * Math.PI / 180)).toFixed(2)}× height` : '—';
+    const tip = $('#stCurveTip');
+    tip.innerHTML = `<b>${esc(fmtDay(t))} ${esc(fmtDate(t))}, ${esc(fmtHM(t))}<span class="tag">${relTag(t)}</span></b>
+      <div><i style="background:#ffc94d"></i>Sun angle: ${fDeg(p.el)}</div>
+      <div><i style="background:#7cc4ff"></i>Azimuth: ${azTxt(p.az)}</div>
+      <div><i style="background:#9aa7c2"></i>Shadow: ${shadow}</div>
+      <div><i style="background:#ff8a5b"></i>${SunCalc.phase(p.el)}</div>`;
+    placeTip(tip, svg, sx, sy);
+  }
+  function curveLeave() {
+    const h = $('#stHover'); if (h) h.style.display = 'none';
+    const dh = $('#stDomeHover'); if (dh) dh.style.display = 'none';
+    $('#stCurveTip').hidden = true;
+  }
+
+  function yearHover(e) {
+    const Yr = ST.yr; if (!Yr || !Yr.X) return;
+    const svg = $('#stYear'); const x = svgX(svg, e);
+    const k = clamp(Math.round(((x - Yr.W.L) / (Yr.W.R - Yr.W.L)) * (Yr.nDays - 1)), 0, Yr.nDays - 1);
+    const sx = Yr.X(k);
+    $('#stYearHover').style.display = '';
+    $('#stYHLine').setAttribute('x1', sx.toFixed(1)); $('#stYHLine').setAttribute('x2', sx.toFixed(1));
+    $('#stYHDay').setAttribute('cx', sx.toFixed(1)); $('#stYHDay').setAttribute('cy', Yr.Yh(Yr.dl[k]).toFixed(1));
+    $('#stYHEl').setAttribute('cx', sx.toFixed(1)); $('#stYHEl').setAttribute('cy', Yr.Ye(Yr.el[k]).toFixed(1));
+    const day = Yr.jan1 + k * DAY; const ev = SunCalc.times(day, Yr.lat, Yr.lon, Yr.off);
+    const rel = k - Yr.todayK;
+    const tag = rel === 0 ? 'today' : rel === 1 ? 'tomorrow' : rel === -1 ? 'yesterday' : rel > 0 ? `in ${rel} days` : `${-rel} days ago`;
+    const dDl = (Yr.dl[k] - Yr.dl[Yr.todayK]) * HOUR;
+    const tip = $('#stYearTip');
+    tip.innerHTML = `<b>${new Date(day).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}<span class="tag">${tag}</span></b>
+      <div><i style="background:#7cc4ff"></i>Day length: ${hmH(Yr.dl[k])}${rel ? ` (${dDl >= 0 ? '+' : '−'}${hmH(Math.abs(dDl) / HOUR)} vs today)` : ''}</div>
+      <div><i style="background:#ffc94d"></i>Max sun angle: ${fDeg(Yr.el[k])} at ${esc(fmtHM(ev.noon))}</div>
+      <div><i style="background:#ff9a3d"></i>${ev.polar === 'day' ? 'Midnight sun — no sunset' : ev.polar === 'night' ? 'Polar night — no sunrise' : `Sunrise ${esc(fmtHM(ev.rise))} · sunset ${esc(fmtHM(ev.set))}`}</div>`;
+    placeTip(tip, svg, sx, Yr.Ye(Yr.el[k]));
+  }
+  function yearLeave() {
+    const h = $('#stYearHover'); if (h) h.style.display = 'none';
+    $('#stYearTip').hidden = true;
+  }
+  [['#stCurve', curveHover, curveLeave], ['#stYear', yearHover, yearLeave]].forEach(([sel, move, leave]) => {
+    const el = $(sel);
+    el.addEventListener('pointermove', move);
+    el.addEventListener('pointerdown', move);
+    el.addEventListener('pointerleave', leave);
+    el.addEventListener('pointercancel', leave);
+  });
 
   /** live part — runs every second */
   function updateSunTracker() {

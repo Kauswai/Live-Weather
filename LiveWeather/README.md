@@ -69,13 +69,26 @@ Everything is calculated in the browser from latitude, longitude and time; no AP
      - golden hour: +6°
    - If |cos H| > 1, the result is reported as **polar day** or **polar night**.
 
-What the card shows:
-- **Elevation curve:** spans sunrise to sunset; for polar days and nights it spans local midnight to midnight. Golden hours are shaded. The path already travelled is drawn solid and the rest dashed. A strip below the horizon (down to −18°) shows how deep the sun is at night.
+What the card shows (it is the last section on the page, since weather comes first):
+- **Elevation curve:** spans sunrise to sunset; for polar days and nights it spans local midnight to midnight.
+  - Golden hours are shaded. The path already travelled is drawn solid and the rest dashed.
+  - A strip below the horizon (down to −18°) shows how deep the sun is at night.
+  - **Hover or drag** anywhere on it for a tooltip giving the time (with "in 2h 10m" or "3h ago"), sun angle, azimuth, shadow length and light phase. The hovered position is mirrored as a white dot on the sky dome.
 - **Sky dome:** a top-down polar plot (zenith in the centre, horizon at the rim) with the day's path, the sunrise and sunset azimuths, and the live sun.
-- **Stats:**
+- **Stats (12):**
   - updated every second: elevation and phase, azimuth, shadow length (1/tan h), and a countdown to sunset or sunrise;
-  - fixed for the day: sunrise and sunset (time, azimuth, civil dawn/dusk), solar noon and maximum elevation, day length with the change vs yesterday and tomorrow, golden hours, astronomical twilight.
-- **Day length through the year:** computed for every day of the current year, with today, the longest and shortest days, and midnight-sun or polar-night day counts at high latitudes.
+  - fixed for the day:
+    - sunrise and sunset (time, azimuth, civil dawn/dusk);
+    - solar noon (direction of the sun, offset from 12:00 on the clock);
+    - **max sun angle today** (vs the year's peak and tomorrow);
+    - **max sun angle this year** (peak date, number of overhead/90° days in the tropics, lowest noon sun);
+    - day length with the change vs yesterday and tomorrow;
+    - golden hours and astronomical twilight.
+- **Year chart:**
+  - Shows day length (left axis, 0–24 h) and the noon sun angle (right axis, 0–90°) for every day of the current year.
+  - Marks today and the extremes of both series, and gives midnight-sun or polar-night day counts at high latitudes.
+  - **Hover or tap** any day to see its date (with "in N days" or "N days ago"), day length versus today, max sun angle with the solar-noon time, and sunrise and sunset.
+  - Daily values are computed once per place and year by `yearData()` (366 × `SunCalc.times`) and cached.
 
 When the static parts are rebuilt:
 - they are rebuilt when the location's calendar date, the location or the window size changes;
