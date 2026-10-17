@@ -224,18 +224,24 @@
         verdict = 'No umbrella needed';
         detail = `Rain chance stays at or below ${maxP}% for the next ${winH} h.`;
     }
+    // wind decides whether an umbrella is usable at all, so it overrides the rain verdict instead of contradicting it
     const notes = [];
     const tcKt = S.hz?.tcWindowKt ? S.hz.tcWindowKt(winH) : 0;
+    let noUmbrella = false;
     if (tcKt >= 34) {
-      notes.push(`🌀 ${S.hz.threat.s.name}: cyclone winds up to ~${fW(tcKt * 1.852)} ${wU()} in this window — umbrellas are useless and dangerous. Stay indoors.`);
-      if (level < 2) { level = 2; verdict = 'Stay indoors — cyclone winds'; detail = 'Wind-driven rain makes umbrellas ineffective; follow official advice.'; }
-    }
-    if (level >= 1 && maxGust >= 45) notes.push(`💨 Gusts up to ${fW(maxGust)} ${wU()} — a windproof umbrella or rain jacket is wiser.`);
+      noUmbrella = true; level = 3;
+      verdict = 'Stay indoors — cyclone winds';
+      detail = `${S.hz.threat.s.classText || 'Cyclone'} ${S.hz.threat.s.name}: winds up to ~${fW(tcKt * 1.852)} ${wU()} in the next ${winH} h${rainingNow ? `, with ${cond(cur.wc).toLowerCase()} now` : maxP ? `, rain chance up to ${maxP}%` : ''}. Umbrellas are useless and dangerous in wind-driven rain — follow official advice.`;
+    } else if (level >= 1 && maxGust >= 60) {
+      noUmbrella = true;
+      verdict = level >= 2 ? 'Rain jacket, not an umbrella' : 'Pack a rain jacket';
+      detail += ` Gusts up to ${fW(maxGust)} ${wU()} will turn an umbrella inside out.`;
+    } else if (level >= 1 && maxGust >= 45) notes.push(`💨 Gusts up to ${fW(maxGust)} ${wU()} — choose a windproof umbrella, or a rain jacket.`);
     if (thunder) notes.push('⚡ Thunderstorms possible — avoid open ground and tall isolated trees.');
     if (snow) notes.push('❄️ Snow in the window — a hooded jacket may beat an umbrella.');
     if (level === 0 && (S.t.H.uv[nowIdx()] ?? 0) >= 6) notes.push('😎 Strong sun though — an umbrella doubles as shade.');
     const firstRain = first != null ? H.time[first] : ncFirst;
-    return { level, verdict, detail, notes, maxP, maxI, sum, first, firstRain, idx, thunder, rainingNow, clearsAt };
+    return { level, verdict, detail, notes, maxP, maxI, sum, first, firstRain, idx, thunder, rainingNow, clearsAt, noUmbrella };
   }
 
   /* ---------------- rendering ---------------- */
@@ -329,7 +335,7 @@
     $('#gaugeArc').style.strokeDasharray = `${(u.maxP / 100) * C} ${C}`;
     $('#gaugeThr').style.transform = `rotate(${S.umbThr * 3.6}deg)`;
     $('#gaugeVal').textContent = u.maxP + '%';
-    $('#umbIcon').innerHTML = WX.umbrellaSVG(u.level >= 1);
+    $('#umbIcon').innerHTML = WX.umbrellaSVG(u.level >= 1 && !u.noUmbrella);
     $('#umbVerdict').textContent = u.verdict;
     $('#umbDetail').textContent = u.detail;
     $('#umbNotes').innerHTML = u.notes.map((n) => `<li>${esc(n)}</li>`).join('');
