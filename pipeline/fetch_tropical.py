@@ -449,7 +449,15 @@ def geom_rings(g) -> list:
 
 
 def imd() -> dict:
+    # dss.imd.gov.in serves only its leaf certificate (no emSign intermediate), so stock CA bundles on
+    # CI runners can't verify it; the same public files are also served over plain HTTP.
     base = 'https://dss.imd.gov.in/dwr_img/GIS/'
+    try:
+        fetch(base + 'tout.geojson', timeout=20, tries=1)
+    except RuntimeError as e:
+        if 'CERTIFICATE' not in str(e).upper():
+            raise
+        base = 'http://dss.imd.gov.in/dwr_img/GIS/'
     out = {}
     for key, f in (('cone', 'tout'), ('r28', 'tout27'), ('r34', 'tout34'), ('r50', 'tout50'), ('r64', 'tout64')):
         raw = fetch(base + f + '.geojson', timeout=20).strip()
