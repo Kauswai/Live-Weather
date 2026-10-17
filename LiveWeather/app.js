@@ -84,16 +84,22 @@
   const cond = (c) => WX.WMO[c] ?? 'Unknown';
 
   /* ---------------- network ---------------- */
-  async function getJSON(url, ms = 15000) {
-    const ctl = new AbortController();
-    const timer = setTimeout(() => ctl.abort(), ms);
-    try {
-      const r = await fetch(url, { signal: ctl.signal });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      return await r.json();
-    } catch (e) {
-      throw new Error(e.name === 'AbortError' ? 'request timed out' : e.message);
-    } finally { clearTimeout(timer); }
+  /** fetch JSON with a timeout; transient failures (5xx, 429, network) are retried twice with backoff */
+  async function getJSON(url, ms = 15000, retries = 2) {
+    for (let attempt = 0; ; attempt++) {
+      const ctl = new AbortController();
+      const timer = setTimeout(() => ctl.abort(), ms);
+      let transient = false;
+      try {
+        const r = await fetch(url, { signal: ctl.signal });
+        if (!r.ok) { transient = r.status >= 500 || r.status === 429; throw new Error(`HTTP ${r.status}`); }
+        return await r.json();
+      } catch (e) {
+        if (e.name === 'TypeError') transient = true; // network error
+        if (!transient || attempt >= retries) throw new Error(e.name === 'AbortError' ? 'request timed out' : e.message);
+      } finally { clearTimeout(timer); }
+      await new Promise((res) => setTimeout(res, 1200 * (attempt + 1) ** 2));
+    }
   }
 
   const HOURLY = ['temperature_2m', 'relative_humidity_2m', 'dew_point_2m', 'apparent_temperature', 'precipitation_probability', 'precipitation', 'weather_code', 'pressure_msl', 'cloud_cover', 'cloud_cover_low', 'cloud_cover_mid', 'cloud_cover_high', 'visibility', 'wind_speed_10m', 'wind_direction_10m', 'wind_gusts_10m', 'uv_index', 'is_day'];

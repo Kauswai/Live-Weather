@@ -1,5 +1,5 @@
 /* SkyPulse service worker: offline app shell, network-first cyclone feed, live weather APIs untouched. */
-const VERSION = 'skypulse-v4';
+const VERSION = 'skypulse-v5';
 const SHELL = [
   './', 'index.html', 'styles.css', 'app.js', 'icons.js', 'sun.js', 'fx.js', 'hazards.js', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon.svg',
