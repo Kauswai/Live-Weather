@@ -118,7 +118,10 @@
     const name = r.city || r.locality || r.principalSubdivision || r.countryName;
     if (!name) return null;
     const sub = [r.city && r.locality && r.locality !== r.city ? r.locality : null, r.principalSubdivision, r.countryName].filter(Boolean).join(', ');
-    return { name, sub };
+    // finest → coarsest, state last: used to match local (district/state) warnings
+    const adm = (r.localityInfo?.administrative || []).filter((a) => a.adminLevel > 4 && a.name).sort((a, b) => b.adminLevel - a.adminLevel).map((a) => a.name);
+    const admins = [...new Set([r.city, r.locality, ...adm, r.principalSubdivision].filter(Boolean))];
+    return { name, sub, cc: r.countryCode, country: r.countryName, admins };
   }
 
   /* ---------------- data processing ---------------- */
@@ -216,6 +219,11 @@
         detail = `Rain chance stays at or below ${maxP}% for the next ${winH} h.`;
     }
     const notes = [];
+    const tcKt = S.hz?.tcWindowKt ? S.hz.tcWindowKt(winH) : 0;
+    if (tcKt >= 34) {
+      notes.push(`🌀 ${S.hz.threat.s.name}: cyclone winds up to ~${fW(tcKt * 1.852)} ${wU()} in this window — umbrellas are useless and dangerous. Stay indoors.`);
+      if (level < 2) { level = 2; verdict = 'Stay indoors — cyclone winds'; detail = 'Wind-driven rain makes umbrellas ineffective; follow official advice.'; }
+    }
     if (level >= 1 && maxGust >= 45) notes.push(`💨 Gusts up to ${fW(maxGust)} ${wU()} — a windproof umbrella or rain jacket is wiser.`);
     if (thunder) notes.push('⚡ Thunderstorms possible — avoid open ground and tall isolated trees.');
     if (snow) notes.push('❄️ Snow in the window — a hooded jacket may beat an umbrella.');
@@ -248,7 +256,7 @@
   function renderAll() {
     if (!S.t) return;
     const { cur } = S.t;
-    document.body.className = 'scene-' + WX.scene(cur.wc, cur.day);
+    applyFx();
     S.umb = computeUmbrella();
     renderHero(); renderSun(); renderUmbrella(); renderTiles(); updateSunTracker(); renderChart(); renderHourly(); renderDaily(); renderPast(); renderStatus();
   }
@@ -471,7 +479,8 @@
     const times = H.time.slice(a, b + 1);
     const relNow = ni - a + clamp((Date.now() - H.time[ni]) / HOUR, 0, 1);
     const P = PARAMS[S.param];
-    const step = S.range === 'short' ? 6 : S.range === 'mid' ? 12 : 24;
+    const narrow = ($('#mainChart').parentElement.clientWidth || 800) < 560;
+    const step = (S.range === 'short' ? 6 : S.range === 'mid' ? 12 : 24) * (narrow ? 2 : 1);
 
     const datasets = P.series.map((s) => {
       const data = H[s.k].slice(a, b + 1).map((v) => (num(v) ? (s.conv ? s.conv(v) : v) : null));
@@ -964,6 +973,7 @@
   const FEED_ICON = { info: '•', alert: '☔', warn: '⚠️', err: '⚠️', good: '✓' };
   function feed(kind, icon, msg) {
     S.feed.unshift({ t: Date.now(), kind, icon: icon || FEED_ICON[kind], msg });
+    const fb = document.getElementById("feedBadge"); if (fb && document.getElementById("app").dataset.active !== "feed") fb.hidden = false;
     if (S.feed.length > FEED_MAX) S.feed.length = FEED_MAX;
     renderFeed();
   }
@@ -1034,11 +1044,11 @@
       const [fc, aq, place] = await Promise.all([
         getJSON(forecastURL(loc)),
         getJSON(aqURL(loc), 10000).catch(() => null),
-        loc.name ? null : reverseGeocode(loc).catch(() => null),
+        loc.name && loc.cc ? null : reverseGeocode(loc).catch(() => null),
       ]);
       if (token !== S.fetchToken) return; // superseded by a newer request
       if (place) Object.assign(loc, place);
-      store.set('lastLoc', { lat: loc.lat, lon: loc.lon, name: loc.name, sub: loc.sub });
+      store.set('lastLoc', { lat: loc.lat, lon: loc.lon, name: loc.name, sub: loc.sub, cc: loc.cc, country: loc.country, admins: loc.admins });
       S.t = processData(fc); S.t.offset = fc.utc_offset_seconds * 1000; S.t.lat = loc.lat; S.t.lon = loc.lon; S.aq = aq;
       S.lastFetch = Date.now(); S.nextFetch = S.lastFetch + REFRESH_MS;
       const first = !S.prevSnap;
@@ -1049,6 +1059,7 @@
       }
       feedAfterRefresh(reason);
       hideGate();
+      updateHazards(token);
     } catch (e) {
       if (token !== S.fetchToken) return;
       S.nextFetch = Date.now() + 60e3;
@@ -1057,6 +1068,62 @@
     } finally {
       if (token === S.fetchToken) { S.fetching = false; $('#refreshBtn').classList.remove('spin'); tick(); }
     }
+  }
+
+  /* ---------------- hazards: cyclones + warnings ---------------- */
+  const LVN = { red: 3, orange: 2, yellow: 1, info: 0 };
+  async function updateHazards(token = S.fetchToken) {
+    if (!S.t || typeof Hazards === 'undefined') return;
+    const loc = S.loc;
+    try {
+      const hz = await Hazards.update({ loc: { lat: S.t.lat, lon: S.t.lon }, t: S.t, cc: loc.cc, countryName: loc.country, admins: loc.admins });
+      if (token !== S.fetchToken) return;
+      S.hz = hz;
+    } catch (e) { console.warn('hazards', e); return; }
+    applyFx();
+    S.umb = computeUmbrella(); renderUmbrella();
+    const w = S.hz.warnings.filter((x) => LVN[x.level] >= 1);
+    const badge = $('#alertBadge');
+    badge.hidden = !w.length; badge.textContent = w.length;
+    badge.classList.toggle('amber', !w.some((x) => LVN[x.level] >= 2));
+    S.hz.warnings.forEach((x) => {
+      if (LVN[x.level] >= 2 || x.source === 'official') once('w-' + x.id + x.level, () => feed(LVN[x.level] >= 2 ? 'warn' : 'alert', x.icon || '⚠️', `${x.source === 'official' ? 'Official' : 'Forecast'} ${x.level} warning — ${x.title}. ${x.text}`));
+    });
+    const th = S.hz.threat;
+    if (th) once(`tc-${th.s.key}-${th.level}`, () => feed('warn', '🌀', `${th.s.classText || 'Tropical cyclone'} ${th.s.name}: ${th.level === 'direct' ? 'direct threat' : th.level === 'near' ? 'close pass' : 'approaching'} — now ${Math.round(th.dNow).toLocaleString()} km away; closest approach ${Math.round(th.cpa.dKm)} km at ${fmtDay(th.cpa.t)} ${fmtHM(th.cpa.t)}.`));
+  }
+
+  /* ---------------- weather effects ---------------- */
+  function applyFx() {
+    if (!S.t || typeof FX === 'undefined') return;
+    const c = S.t.cur, code = c.wc, pr = c.pr || 0;
+    let kind = 'none', intensity = 0.5, hail = false;
+    if (code >= 95) { kind = 'storm'; intensity = code === 95 ? 0.75 : 1; hail = code !== 95; }
+    else if (code === 82) { kind = 'heavy'; intensity = 1; }
+    else if (code === 65 || code === 67) { kind = 'heavy'; intensity = 0.85; }
+    else if (code === 63 || code === 81 || code === 66) { kind = 'rain'; intensity = 0.75; }
+    else if (code === 61 || code === 80) { kind = 'rain'; intensity = 0.4; }
+    else if (code >= 51 && code <= 57) { kind = 'drizzle'; intensity = code === 51 || code === 56 ? 0.45 : code === 53 ? 0.7 : 0.95; }
+    else if (isSnow(code)) { kind = 'snow'; intensity = code === 71 || code === 85 ? 0.4 : code === 73 ? 0.7 : 1; }
+    else if (code === 45 || code === 48) kind = 'fog';
+    else if (code === 2 || code === 3) kind = 'clouds';
+    else if (!c.day) kind = 'stars';
+    if (pr >= 0.1 && ['none', 'clouds', 'stars', 'fog'].includes(kind)) { kind = pr >= 4 ? 'heavy' : pr >= 0.6 ? 'rain' : 'drizzle'; intensity = Math.min(1, 0.3 + pr / 5); }
+    else if (kind === 'rain') intensity = Math.max(intensity, Math.min(1, pr / 4));
+    if (S.hz?.cyclone) { kind = 'cyclone'; intensity = Math.min(1, 0.5 + (S.hz.tcWindowKt(1) || 0) / 130); }
+    const force = new URLSearchParams(location.search).get('fx');
+    if (force) {
+      kind = { moderate: 'rain', light: 'rain', hail: 'storm', thunder: 'storm' }[force] || force;
+      intensity = { light: 0.35, moderate: 0.75, drizzle: 0.8, heavy: 1, storm: 0.9, hail: 1, cyclone: 1 }[force] ?? 0.7;
+      hail = force === 'hail';
+    }
+    FX.set({ kind, intensity, hail, windKmh: kind === 'cyclone' ? Math.max(c.ws, 90) : c.ws, windFromDeg: c.wd, isDay: c.day,
+      hemisphere: S.hz?.hemisphere || (S.t.lat < 0 ? 'S' : 'N'), stormBearing: S.hz?.stormBearing });
+    setScene(kind === 'cyclone' ? 'cyclone' : WX.scene(code, c.day));
+  }
+  function setScene(name) {
+    document.body.classList.forEach((k) => { if (k.startsWith('scene-')) document.body.classList.remove(k); });
+    document.body.classList.add('scene-' + name);
   }
 
   function setLocation(loc, why) {
@@ -1117,16 +1184,18 @@
   }
 
   /* ---------------- gate & toast ---------------- */
+  let gateTimer;
+  const openGate = () => { clearTimeout(gateTimer); $('#gate').hidden = false; $('#gate').classList.remove('hide'); };
   function showGate(title, msg) {
-    $('#gate').classList.remove('hide'); $('#gateTitle').textContent = title; $('#gateMsg').textContent = msg;
+    openGate(); $('#gateTitle').textContent = title; $('#gateMsg').textContent = msg;
     $('#gateSpinner').classList.remove('off'); $('#gateActions').hidden = true;
   }
   function gateFail(title, msg = '') {
-    $('#gate').classList.remove('hide'); $('#gateTitle').textContent = title; $('#gateMsg').textContent = msg;
+    openGate(); $('#gateTitle').textContent = title; $('#gateMsg').textContent = msg;
     $('#gateSpinner').classList.add('off'); $('#gateActions').hidden = false;
     $('#liveText').textContent = 'No location'; $('#livePill').className = 'live-pill error';
   }
-  const hideGate = () => $('#gate').classList.add('hide');
+  const hideGate = () => { $('#gate').classList.add('hide'); clearTimeout(gateTimer); gateTimer = setTimeout(() => { $('#gate').hidden = true; }, 450); };
   let toastTimer;
   function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.hidden = true), 2600); }
 
@@ -1141,7 +1210,9 @@
     if (!r) return;
     stopGPS(); S.mode = 'manual';
     input.value = ''; results = []; renderResults(); input.blur();
-    setLocation({ lat: r.latitude, lon: r.longitude, name: r.name, sub: [r.admin1, r.country].filter(Boolean).join(', '), source: 'search' }, `Switched to ${r.name}${r.country ? ', ' + r.country : ''}`);
+    setLocation({ lat: r.latitude, lon: r.longitude, name: r.name, sub: [r.admin1, r.country].filter(Boolean).join(', '), source: 'search',
+      cc: r.country_code, country: r.country, admins: [...new Set([r.name, r.admin4, r.admin3, r.admin2, r.admin1].filter(Boolean))] }, `Switched to ${r.name}${r.country ? ', ' + r.country : ''}`);
+    document.body.classList.remove('search-open');
     hideGate();
   }
   input.addEventListener('input', () => {
@@ -1173,7 +1244,7 @@
 
   document.querySelectorAll('[data-unit]').forEach((b) => b.addEventListener('click', () => {
     S.unit = b.dataset.unit; store.set('unit', S.unit); setSeg('.top-actions .seg', 'unit', S.unit);
-    renderAll(); renderFeed();
+    renderAll(); renderFeed(); updateHazards();
   }));
   $('#umbWin').addEventListener('click', (e) => {
     const b = e.target.closest('button'); if (!b) return;
@@ -1211,7 +1282,88 @@
     if (!document.hidden && S.loc && Date.now() - S.lastFetch > REFRESH_MS) refresh('auto');
   });
 
+  /* ---------------- phone app shell: tabs, gestures, search, install ---------------- */
+  const TABS = ['now', 'forecast', 'alerts', 'sun', 'feed'];
+  const TAB_TITLE = { now: '', forecast: 'Forecast', alerts: 'Alerts & storms', sun: 'Sun & daylight', feed: 'Live feed' };
+  const isPhone = () => window.matchMedia('(max-width: 760px)').matches;
+  const tabScroll = {};
+  function setTab(name, { remember = true } = {}) {
+    const main = $('#app'), prev = main.dataset.active;
+    if (!TABS.includes(name)) name = 'now';
+    if (prev === name) { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
+    tabScroll[prev] = window.scrollY;
+    main.dataset.active = name;
+    document.querySelectorAll('#tabbar button').forEach((b) => b.classList.toggle('active', b.dataset.tab === name));
+    $('#tabTitle').textContent = TAB_TITLE[name] + (TAB_TITLE[name] && S.loc?.name ? ` · ${S.loc.name}` : '');
+    if (remember) store.set('tab', name);
+    if (name === 'feed') $('#feedBadge').hidden = true;
+    window.scrollTo(0, isPhone() ? tabScroll[name] || 0 : window.scrollY);
+    // components measured while hidden need a re-layout once visible
+    requestAnimationFrame(() => {
+      if (name === 'forecast' && S.t) renderChart();
+      if (name === 'sun') { ST.key = null; updateSunTracker(); }
+      if (name === 'alerts' && typeof Hazards !== 'undefined') Hazards.refreshMap();
+    });
+  }
+  $('#tabbar').addEventListener('click', (e) => { const b = e.target.closest('button[data-tab]'); if (b) setTab(b.dataset.tab); });
+
+  // horizontal swipe between tabs (ignores swipes that start on scrollable/interactive widgets)
+  let sw = null;
+  $('#app').addEventListener('touchstart', (e) => {
+    if (!isPhone() || e.touches.length !== 1 || e.target.closest('.hourly, .chart-wrap, svg, .tc-map-wrap, .tc-table-wrap, input, .leaflet-container')) { sw = null; return; }
+    sw = { x: e.touches[0].clientX, y: e.touches[0].clientY, t: Date.now() };
+  }, { passive: true });
+  $('#app').addEventListener('touchend', (e) => {
+    if (!sw) return;
+    const dx = e.changedTouches[0].clientX - sw.x, dy = e.changedTouches[0].clientY - sw.y;
+    if (Math.abs(dx) > 70 && Math.abs(dy) < 45 && Date.now() - sw.t < 600) {
+      const i = TABS.indexOf($('#app').dataset.active) + (dx < 0 ? 1 : -1);
+      if (i >= 0 && i < TABS.length) setTab(TABS[i]);
+    }
+    sw = null;
+  }, { passive: true });
+
+  // pull to refresh (phones)
+  let ptr = null;
+  const ptrEl = $('#ptr');
+  window.addEventListener('touchstart', (e) => { ptr = isPhone() && window.scrollY <= 0 && !document.body.classList.contains('search-open') && !e.target.closest('.tc-map-wrap, .leaflet-container') ? { y: e.touches[0].clientY, d: 0 } : null; }, { passive: true });
+  window.addEventListener('touchmove', (e) => {
+    if (!ptr) return;
+    ptr.d = Math.max(0, e.touches[0].clientY - ptr.y);
+    if (ptr.d > 6) { ptrEl.style.opacity = Math.min(1, ptr.d / 80); ptrEl.style.transform = `translateY(${Math.min(70, ptr.d * 0.6) - 60}px) rotate(${ptr.d * 3}deg)`; }
+  }, { passive: true });
+  window.addEventListener('touchend', () => {
+    if (!ptr) return;
+    const go = ptr.d > 90; ptr = null;
+    if (go) {
+      ptrEl.classList.add('spin'); ptrEl.style.transform = 'translateY(10px)';
+      refresh('manual').finally(() => setTimeout(() => { ptrEl.classList.remove('spin'); ptrEl.style.opacity = 0; ptrEl.style.transform = 'translateY(-60px)'; }, 300));
+    } else { ptrEl.style.opacity = 0; ptrEl.style.transform = 'translateY(-60px)'; }
+  });
+
+  // search sheet on phones
+  $('#searchToggle').addEventListener('click', () => {
+    const open = document.body.classList.toggle('search-open');
+    if (open) setTimeout(() => input.focus(), 30); else input.blur();
+  });
+  input.addEventListener('blur', () => setTimeout(() => { if (!input.value) document.body.classList.remove('search-open'); }, 200));
+  input.addEventListener('keydown', (e) => { if (e.key === 'Escape') document.body.classList.remove('search-open'); });
+
+  // install as an app (PWA)
+  let installEvt = null;
+  window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installEvt = e; $('#installBtn').hidden = false; });
+  $('#installBtn').addEventListener('click', async () => {
+    if (!installEvt) return;
+    installEvt.prompt(); await installEvt.userChoice.catch(() => null); installEvt = null; $('#installBtn').hidden = true;
+  });
+  window.addEventListener('appinstalled', () => { $('#installBtn').hidden = true; toast('SkyPulse installed ✓'); });
+  if ('serviceWorker' in navigator && location.protocol === 'https:') {
+    window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+  }
+
   /* ---------------- boot ---------------- */
+  if (typeof Hazards !== 'undefined') Hazards.init({ esc, fmtHM, fmtDay, fmtDate, fT, fW, wU, fP, pU, dirName, dur, ago, getJSON, unit: () => S.unit });
+  setTab(new URLSearchParams(location.search).get('tab') || store.get('tab', 'now'), { remember: false });
   setSeg('.top-actions .seg', 'unit', S.unit);
   setSeg('#umbWin', 'h', S.umbWin);
   $('#thrInput').value = S.umbThr; $('#thrVal').textContent = S.umbThr + '%';

@@ -1,55 +1,93 @@
 # Live Weather
 
-**SkyPulse** is a live weather dashboard for your exact location. It shows past, present and future temperature, humidity, cloud cover, wind, pressure and rain, plus an umbrella advisor that tells you whether to take one.
+**SkyPulse** is a live weather app for your exact location. It shows:
 
-**Live site:** <https://kauswai.github.io/Live-Weather/>
+- past, present and future temperature, humidity, cloud cover, wind, pressure and rain;
+- an umbrella advisor;
+- **tropical-cyclone tracking** using data from the official regional agencies;
+- **local warnings**.
+
+You can install it on a phone as an app.
+
+**Live site:** <https://kauswai.github.io/Live-Weather/>. On a phone, open it and choose *Install app* or *Add to Home screen*.
 
 - Website source and technical notes: [LiveWeather/](LiveWeather/README.md)
-- Deployment: `.github/workflows/deploy-pages.yml` publishes `LiveWeather/` to GitHub Pages on every push to `main`.
+- Cyclone and warnings data pipeline: [pipeline/](pipeline/fetch_tropical.py)
+- Deployment: `.github/workflows/deploy-pages.yml`. Every push to `main`, and a run every 30 minutes, collects fresh cyclone and warning data, then publishes `LiveWeather/` to GitHub Pages.
 
 ## Highlights
 | | |
 |---|---|
+| 📱 **Phone app** | A bottom tab bar (Now · Forecast · Alerts · Sun · Feed), swipe between tabs, pull to refresh, a search sheet, and an alert badge. It installs as a PWA and the app shell works offline. |
+| 🌀 **Tropical cyclones** | Live storms from **NHC** (Atlantic/East & Central Pacific), **JMA** (RSMC Tokyo), **IMD** (RSMC New Delhi: official cone and wind areas), **JTWC** (all other basins) and **GDACS** (surge/rain model maps). For a storm near you it shows: <ul><li>a track map with the cone, wind radii and your position;</li><li>intensity on the agency's own scale and the local scale;</li><li>closest approach, and when gale- or hurricane-force winds arrive and end;</li><li>how the wind direction changes as the storm passes;</li><li>periods of **onshore and offshore winds** from a coastline probe, and storm-surge exposure;</li><li>rain during passage, waves at the nearest sea, and the official bulletins.</li></ul> |
+| ⚠️ **Warnings** | Official warnings come from **NWS** (US), **IMD/state agencies via NDMA SACHET** (India, matched to your state or district), **Hong Kong Observatory** and the official cyclone areas. They're combined with SkyPulse forecast hazards: heavy rain and flooding, damaging winds, storm surge, dangerous surf, thunderstorms and hail, heat, cold, fog and ice. |
+| 🌧️ **Realistic weather effects** | A canvas particle system with depth, wind slant and splashes. There are separate scenes for drizzle (fine mist), light, moderate and heavy rain (rain curtains and splashes), thunderstorms (branching lightning, flashes, hail), **tropical cyclones** (sideways wind-driven rain, spray, flying debris, spiral bands rotating the right way for each hemisphere), snow, fog, clouds and stars. |
 | 📍 **Live GPS** | Follows your position and refreshes the forecast when you move more than 1.5 km. Falls back to city search or your last known place. |
-| ☂️ **Umbrella advisor** | Choose a 1–24 h window and a rain-chance threshold. It blends hourly probability, expected rainfall and a 15-minute nowcast into a clear recommendation. |
-| 📰 **Live feed** | Auto-refreshes every 5 min and logs changes plus upcoming events: rain onset, thunderstorms, sunset, high UV, strong gusts. |
+| ☂️ **Umbrella advisor** | Choose a 1–24 h window and a rain-chance threshold. It blends hourly probability, expected rainfall and a 15-minute nowcast, and switches to "stay indoors" when cyclone winds are due. |
+| 📰 **Live feed** | Auto-refreshes every 5 min and logs changes, new warnings, cyclone threat changes, rain onset, sunset, UV and strong gusts. |
 | 📈 **Past · Present · Future** | One interactive chart from 2 days back to 7 days ahead, with a "now" marker. |
 | 🧭 **Current conditions** | Feels like, humidity, dew point, cloud layers, wind, pressure tendency, rain, nowcast, UV, visibility, air quality, moon phase. |
 | 🗓️ **Forecasts** | Next-24-hour strip, 8-day outlook, and a look back at the last 48 hours. |
-| 🌅 **Sun tracker** | The live solar elevation and azimuth are computed from your latitude, longitude and the time of year. It shows the sunrise → sunset elevation curve (hover it for the sun angle at any past or future moment today), a top-down sky path, local sunrise/sunset/solar-noon times, day length (and its daily change), golden hour, twilight and your shadow length. It also gives today's maximum sun angle and the year's highest and lowest noon sun, plus a full-year chart of day length and maximum sun angle; hover it to see any day. It sits at the bottom of the page, below the weather sections. |
+| 🌅 **Sun tracker** | Live solar elevation and azimuth, a sunrise → sunset curve you can hover, a top-down sky path, day length, golden hour, twilight, and a full-year chart of day length and maximum sun angle. |
 
-No build step, no API keys, no tracking. Your coordinates are sent only to the weather and place-name APIs listed below.
+No API keys and no tracking. Your coordinates go only to the weather, elevation, marine, alert and place-name APIs listed below.
 
 ## Repository layout
 ```
 Live-Weather/
 ├── LiveWeather/              ← the website (served by GitHub Pages)
-│   ├── index.html            page structure
-│   ├── styles.css            glassmorphism theme, weather-reactive backgrounds, responsive layout
-│   ├── icons.js              animated SVG weather icons + WMO weather-code names
+│   ├── index.html            page structure (sections tagged per phone tab)
+│   ├── styles.css            theme, weather-reactive backgrounds, desktop grid + phone app shell
+│   ├── app.js                location, forecast, umbrella, charts, live feed, tabs/gestures/PWA
+│   ├── hazards.js            cyclone threat analysis, warnings, cyclone map/card
+│   ├── fx.js                 canvas precipitation and storm effects
 │   ├── sun.js                solar position, sunrise/sunset/twilight maths (NOAA algorithm)
-│   ├── app.js                location, data fetching, umbrella logic, charts, live feed
+│   ├── icons.js              animated SVG weather icons + WMO weather-code names
+│   ├── manifest.webmanifest  PWA manifest       sw.js  service worker (offline shell)
+│   ├── icons/                app icons (generated by pipeline/make_icons.py)
+│   ├── data/tropical.json    generated on every deploy, not committed
 │   └── README.md             technical documentation
+├── pipeline/
+│   ├── fetch_tropical.py     NHC · JMA · JTWC · IMD · GDACS · SACHET → tropical.json (stdlib only)
+│   └── make_icons.py         renders the PNG app icons (stdlib only)
 ├── .github/workflows/
-│   └── deploy-pages.yml      Pages deployment
+│   └── deploy-pages.yml      30-minute data refresh + Pages deployment
 └── README.md                 this file
 ```
 
 ## Run locally
-Browsers allow geolocation only on HTTPS or `localhost`:
+```bash
+py pipeline/fetch_tropical.py --out LiveWeather/data/tropical.json
+```
 
 ```bash
 py -m http.server 8090 --directory LiveWeather
 ```
 
-Then open <http://localhost:8090>.
+Then open <http://localhost:8090>. Browsers allow geolocation only on HTTPS or `localhost`. The service worker only registers over HTTPS, so local edits are never served from a cache.
+
+**Preview any precipitation effect:** add `?fx=drizzle`, `light`, `moderate`, `heavy`, `storm`, `hail`, `cyclone`, `snow`, `fog`, `clouds` or `stars` to the URL. Add `?tab=alerts` (or another tab name) to open a specific tab on a phone.
 
 ## Enabling GitHub Pages (one-time)
-Repository **Settings → Pages → Build and deployment → Source: GitHub Actions**. After that, every push to `main` redeploys the site. You can also redeploy by hand from **Actions → Deploy site to GitHub Pages → Run workflow**.
+Repository **Settings → Pages → Build and deployment → Source: GitHub Actions**. You can also redeploy by hand from **Actions → Deploy site to GitHub Pages → Run workflow**.
+
+GitHub pauses scheduled workflows in repositories with no activity for 60 days. If cyclone data stops updating, re-enable the workflow in the Actions tab.
 
 ## Data & credits
-- Weather forecast, history, nowcast and air quality: [Open-Meteo](https://open-meteo.com/) (CC BY 4.0)
-- Place names from coordinates: [BigDataCloud](https://www.bigdatacloud.com/) free client-side reverse geocoding
-- City search: Open-Meteo Geocoding API
-- Sun position & events: computed locally with the [NOAA Solar Calculator](https://gml.noaa.gov/grad/solcalc/calcdetails.html) equations (Meeus, *Astronomical Algorithms*)
-- Charts: [Chart.js](https://www.chartjs.org/) 4.4.1
+- **Weather:** forecast, history, nowcast, air quality, marine (waves, sea temperature) and elevation from [Open-Meteo](https://open-meteo.com/) (CC BY 4.0).
+- **Tropical cyclones:**
+  - [NOAA NHC/CPHC](https://www.nhc.noaa.gov/);
+  - [JMA](https://www.jma.go.jp/bosai/map.html#contents=typhoon&lang=en) (RSMC Tokyo);
+  - [IMD](https://rsmcnewdelhi.imd.gov.in/) (RSMC New Delhi);
+  - [JTWC](https://www.metoc.navy.mil/jtwc/jtwc.html);
+  - [GDACS](https://www.gdacs.org/) (UN/EC).
+- **Warnings:**
+  - [NWS alerts API](https://www.weather.gov/documentation/services-web-api);
+  - [NDMA SACHET](https://sachet.ndma.gov.in/) CAP feed (IMD and the state disaster-management authorities);
+  - [Hong Kong Observatory](https://www.hko.gov.hk/) open data.
+- **Maps:** [Leaflet](https://leafletjs.com/) 1.9.4 with Esri World Dark Gray Canvas tiles (© Esri, © OpenStreetMap contributors).
+- **Place names:** [BigDataCloud](https://www.bigdatacloud.com/) for reverse geocoding; Open-Meteo Geocoding for search.
+- **Sun position:** computed locally with the [NOAA Solar Calculator](https://gml.noaa.gov/grad/solcalc/calcdetails.html) equations.
+- **Charts:** [Chart.js](https://www.chartjs.org/) 4.4.1.
+
+> Cyclone impacts at your location are SkyPulse **estimates**, derived from agency wind radii and forecast models. Always follow the official warnings and evacuation orders from your national meteorological service and local authorities.
