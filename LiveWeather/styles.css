@@ -231,7 +231,7 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .meter { height: 6px; border-radius: 99px; background: rgba(255,255,255,.12); overflow: hidden; }
 .meter i { display: block; height: 100%; border-radius: 99px; background: var(--accent); transition: width .8s; }
 .layers { display: grid; gap: 4px; font-size: 11px; color: var(--muted); }
-.layers div { display: grid; grid-template-columns: 34px 1fr 32px; align-items: center; gap: 6px; }
+.layers > div { display: grid; grid-template-columns: 34px 1fr 32px; align-items: center; gap: 6px; }
 .layers .meter { height: 5px; }
 .layers .meter i { background: #cfd9ef; }
 .compass { position: absolute; right: 12px; top: 34px; width: 64px; height: 64px; }
@@ -587,3 +587,10 @@ main[aria-busy="true"] .tiles:empty { min-height: 150px; border-radius: var(--ra
   .gate { padding-bottom: 80px; }
   .toast { bottom: calc(80px + env(safe-area-inset-bottom)); }
 }
+
+/* Chart parameter tabs scroll sideways instead of widening the page (phones zoom out otherwise) */
+#paramTabs { max-width: 100%; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+#paramTabs::-webkit-scrollbar { display: none; }
+#paramTabs button, #rangeTabs button { white-space: nowrap; flex: none; }
+/* safety net: nothing may widen the layout viewport */
+html, body { overflow-x: clip; }

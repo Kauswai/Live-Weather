@@ -1329,7 +1329,7 @@
   // horizontal swipe between tabs (ignores swipes that start on scrollable/interactive widgets)
   let sw = null;
   $('#app').addEventListener('touchstart', (e) => {
-    if (!isPhone() || e.touches.length !== 1 || e.target.closest('.hourly, .chart-wrap, svg, .tc-map-wrap, .tc-table-wrap, input, .leaflet-container')) { sw = null; return; }
+    if (!isPhone() || e.touches.length !== 1 || e.target.closest('.hourly, .chart-wrap, svg, .seg, .tc-map-wrap, .tc-table-wrap, input, .leaflet-container')) { sw = null; return; }
     sw = { x: e.touches[0].clientX, y: e.touches[0].clientY, t: Date.now() };
   }, { passive: true });
   $('#app').addEventListener('touchend', (e) => {
