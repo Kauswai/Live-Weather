@@ -663,7 +663,10 @@
     const cw = svgW($("#stCurve")); CV.R = cw - 16; $("#stCurve").setAttribute("viewBox", `0 0 ${cw} 250`);
     const today = SunCalc.times(mid, lat, lon, off);
     const yday = SunCalc.times(mid - DAY, lat, lon, off), tmrw = SunCalc.times(mid + DAY, lat, lon, off);
-    const [d0, d1] = today.polar ? [mid - off, mid - off + DAY] : [today.rise, today.set];
+    const partial = !today.polar && (today.rise == null || today.set == null); // first/last day of midnight sun or polar night
+    const whole = today.polar || partial;
+    const [d0, d1] = whole ? [mid - off, mid - off + DAY] : [today.rise, today.set];
+    ST.whole = whole;
     const yMax = Math.max(15, Math.ceil(Math.max(today.maxEl, 1) / 15) * 15);
     const X = (t) => CV.L + ((t - d0) / (d1 - d0)) * (CV.R - CV.L);
     const Y = (e) => (e >= 0 ? CV.HZ - (Math.min(e, yMax) / yMax) * (CV.HZ - CV.TOP) : CV.HZ + (Math.min(-e, 18) / 18) * (CV.BOT - CV.HZ));
@@ -683,7 +686,7 @@
     }
     g += svgNS('text', { x: CV.L - 6, y: CV.HZ + 4, 'text-anchor': 'end' }, '0°');
     g += svgNS('text', { x: CV.L - 6, y: CV.BOT + 2, 'text-anchor': 'end' }, '−18°');
-    if (!today.polar) {
+    if (!whole) {
       if (num(today.goldenAmEnd)) g += svgNS('rect', { class: 'golden', x: X(d0), y: CV.TOP, width: Math.max(0, X(today.goldenAmEnd) - X(d0)), height: CV.HZ - CV.TOP });
       if (num(today.goldenPmStart)) g += svgNS('rect', { class: 'golden', x: X(today.goldenPmStart), y: CV.TOP, width: Math.max(0, X(d1) - X(today.goldenPmStart)), height: CV.HZ - CV.TOP });
     }
@@ -703,7 +706,9 @@
       g += svgNS('line', { class: 'grid-line', x1: x, x2: x, y1: CV.BOT, y2: CV.BOT + 4 });
       if (h % every === 0 && x - CV.L > 34 && CV.R - x > 34) g += svgNS('text', { x, y: CV.BOT + 16, 'text-anchor': 'middle' }, esc(fmtH(t)));
     }
-    if (!today.polar) {
+    if (partial) {
+      g += svgNS('text', { x: (CV.L + CV.R) / 2, y: 247, 'text-anchor': 'middle', class: 'lbl-strong' }, today.rise != null ? `Sun rises at ${esc(fmtHM(today.rise))} and stays up — midnight sun begins (${durHMS(today.dayLen)} of daylight)` : today.set != null ? `Sun sets at ${esc(fmtHM(today.set))} — the midnight sun ends today` : `Transition day: ${durHMS(today.dayLen)} of daylight`);
+    } else if (!today.polar) {
       g += svgNS('text', { x: CV.L, y: 247, class: 'lbl-strong' }, `↑ Sunrise ${esc(fmtHM(d0))}`);
       g += svgNS('text', { x: CV.R, y: 247, 'text-anchor': 'end', class: 'lbl-strong' }, `Sunset ${esc(fmtHM(d1))} ↓`);
     } else {
@@ -753,13 +758,13 @@
       <div class="stat"><small>Azimuth now</small><b id="stAz">–</b><span id="stAzSub"></span></div>
       <div class="stat"><small>Shadow length</small><b id="stShadow">–</b><span id="stShadowSub"></span></div>
       <div class="stat"><small id="stCountLbl">Daylight left</small><b id="stCount">–</b><span id="stCountSub"></span></div>
-      <div class="stat"><small>Sunrise</small><b>${today.polar ? '—' : esc(fmtHM(today.rise))}</b><span>${today.polar ? polarTxt : `Azimuth ${azTxt(today.riseAz)} · civil dawn ${esc(tOr(today.civilDawn))}`}</span></div>
-      <div class="stat"><small>Sunset</small><b>${today.polar ? '—' : esc(fmtHM(today.set))}</b><span>${today.polar ? polarTxt : `Azimuth ${azTxt(today.setAz)} · civil dusk ${esc(tOr(today.civilDusk))}`}</span></div>
+      <div class="stat"><small>Sunrise</small><b>${today.polar ? '—' : esc(tOr(today.rise, 'No sunrise'))}</b><span>${today.polar ? polarTxt : `Azimuth ${azTxt(today.riseAz)} · civil dawn ${esc(tOr(today.civilDawn))}`}</span></div>
+      <div class="stat"><small>Sunset</small><b>${today.polar ? '—' : esc(tOr(today.set, 'No sunset'))}</b><span>${today.polar ? polarTxt : `Azimuth ${azTxt(today.setAz)} · civil dusk ${esc(tOr(today.civilDusk))}`}</span></div>
       <div class="stat"><small>Solar noon</small><b>${esc(fmtHM(today.noon))}</b><span>Sun due ${dirName(noonAz)} (${Math.round(noonAz)}°) · ${deltaMS(today.noon - (mid - off + DAY / 2))} vs clock noon</span></div>
       <div class="stat"><small>Max sun angle · today</small><b>${fDeg(today.maxEl)}</b><span>${Math.abs(vsPeak) < 0.05 ? 'Highest of the year' : `${fDeg(vsPeak)} vs year peak`} · tomorrow ${fDeg(tmrw.maxEl)}</span></div>
-      <div class="stat"><small>Max sun angle · ${Yr.yr}</small><b>${fDeg(Yr.el[Yr.iElMax])}</b><span>Peak ${Yr.md(Yr.iElMax)}${Yr.nZenith ? ` · overhead (90°) on ${Yr.nZenith} day${Yr.nZenith > 1 ? 's' : ''}` : ''} · lowest noon ${fDeg(Yr.el[Yr.iElMin])} ${Yr.md(Yr.iElMin)}</span></div>
+      <div class="stat"><small>Max sun angle · ${Yr.yr}</small><b>${fDeg(Yr.el[Yr.iElMax])}</b><span>${Yr.zenith.length ? `Sun overhead on ${Yr.zenith.map(Yr.md).join(' & ')}` : `Peak ${Yr.md(Yr.iElMax)}`} · lowest noon ${fDeg(Yr.el[Yr.iElMin])} ${Yr.md(Yr.iElMin)}</span></div>
       <div class="stat"><small>Day length</small><b>${durHMS(dl)}</b><span>${deltaMS(dly)} vs yesterday · tomorrow ${deltaMS(dlt)}</span></div>
-      <div class="stat"><small>Golden hour</small><b>${today.polar ? '—' : `${esc(tOr(today.goldenPmStart))}–${esc(fmtHM(today.set))}`}</b><span>${today.polar ? '' : `Morning ${esc(fmtHM(today.rise))}–${esc(tOr(today.goldenAmEnd))}`}</span></div>
+      <div class="stat"><small>Golden hour</small><b>${today.polar ? '—' : `${esc(tOr(today.goldenPmStart))}–${esc(tOr(today.set))}`}</b><span>${today.polar ? '' : `Morning ${esc(tOr(today.rise))}–${esc(tOr(today.goldenAmEnd))}`}</span></div>
       <div class="stat"><small>Twilight</small><b>${esc(tOr(today.astroDawn, '—'))} · ${esc(tOr(today.astroDusk, '—'))}</b><span>Astronomical dawn · dusk (sun 18° down)</span></div>`;
     const doy = Math.floor((mid - Date.UTC(new Date(mid).getUTCFullYear(), 0, 1)) / DAY) + 1;
     $('#stSub').textContent = `${Math.abs(lat).toFixed(3)}°${lat >= 0 ? 'N' : 'S'} ${Math.abs(lon).toFixed(3)}°${lon >= 0 ? 'E' : 'W'} · day ${doy} of the year · solar declination ${today.decl >= 0 ? '+' : '−'}${Math.abs(today.decl).toFixed(2)}° · equation of time ${deltaMS(today.eot * 60000)}`;
@@ -777,14 +782,21 @@
     const key = `${lat.toFixed(2)},${lon.toFixed(2)},${yr}`;
     const jan1 = Date.UTC(yr, 0, 1), nDays = (Date.UTC(yr + 1, 0, 1) - jan1) / DAY;
     if (!ST.yr || ST.yr.key !== key) {
-      const dl = [], el = [];
-      for (let k = 0; k < nDays; k++) { const t = SunCalc.times(jan1 + k * DAY, lat, lon, off); dl.push(t.dayLen / HOUR); el.push(t.maxEl); }
+      const dl = [], el = [], dec = [];
+      for (let k = 0; k < nDays; k++) { const t = SunCalc.times(jan1 + k * DAY, lat, lon, off); dl.push(Math.max(0, Math.min(24, t.dayLen / HOUR))); el.push(t.maxEl); dec.push(t.decl); }
+      // tropics: the sun is overhead on the day(s) the declination crosses the latitude. Noon sampling can
+      // miss the exact crossing by up to ~0.2°, so those days are pinned to 90°.
+      const zenith = [];
+      if (Math.abs(lat) <= 23.45) for (let k = 0; k < nDays - 1; k++) {
+        if ((dec[k] - lat) * (dec[k + 1] - lat) <= 0) { const z = Math.abs(dec[k] - lat) <= Math.abs(dec[k + 1] - lat) ? k : k + 1; if (!zenith.includes(z)) zenith.push(z); }
+      }
+      zenith.forEach((z) => { el[z] = 90; });
       const arg = (a, better) => a.reduce((b, v, k) => (better(v, a[b]) ? k : b), 0);
       ST.yr = {
         key, yr, jan1, nDays, dl, el, lat, lon, off,
         iMin: arg(dl, (a, b) => a < b), iMax: arg(dl, (a, b) => a > b),
         iElMin: arg(el, (a, b) => a < b), iElMax: arg(el, (a, b) => a > b),
-        nZenith: el.filter((v) => v >= 89.5).length,
+        zenith,
         md: (k) => new Date(jan1 + k * DAY).toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' }),
       };
     }
@@ -793,7 +805,7 @@
   }
 
   function buildYearChart(Yr) {
-    const { yr, jan1, nDays, dl, el, todayK, iMin, iMax, iElMin, iElMax, md } = Yr;
+    const { yr, jan1, nDays, dl, el, todayK, iMin, iMax, iElMin, iElMax, md, zenith } = Yr;
     const yw = Math.max(300, Math.round($('#stYear').parentElement.clientWidth - 24));
     $('#stYear').setAttribute('viewBox', `0 0 ${yw} 150`);
     const W = { L: 34, R: yw - 34, TOP: 10, BOT: 118 };
@@ -815,7 +827,7 @@
     g += svgNS('path', { class: 'yr-line', d: 'M' + ptsH.join('L') });
     g += svgNS('path', { class: 'yr-el', d: 'M' + ptsE.join('L') });
     [iMin, iMax].forEach((k) => { g += svgNS('circle', { class: 'yr-ext', cx: X(k), cy: Yh(dl[k]), r: 3.5 }); });
-    [iElMin, iElMax].forEach((k) => { g += svgNS('circle', { class: 'yr-el-ext', cx: X(k), cy: Ye(el[k]), r: 3.5 }); });
+    [iElMin, ...(zenith.length ? zenith : [iElMax])].forEach((k) => { g += svgNS('circle', { class: 'yr-el-ext', cx: X(k), cy: Ye(el[k]), r: 3.5 }); });
     const tx = X(todayK), ty = Yh(dl[todayK] ?? 0);
     g += svgNS('line', { class: 'yr-today', x1: tx, x2: tx, y1: W.TOP, y2: W.BOT });
     g += svgNS('circle', { class: 'yr-dot', cx: tx, cy: ty, r: 5 });
@@ -829,7 +841,7 @@
     $('#stYearNote').textContent = [
       nSun ? `Midnight sun ${nSun} days/yr` : `Longest ${md(iMax)} · ${hmH(dl[iMax])}`,
       nNight ? `Polar night ${nNight} days/yr` : `Shortest ${md(iMin)} · ${hmH(dl[iMin])}`,
-      `Highest sun ${md(iElMax)} · ${fDeg(el[iElMax])}`,
+      zenith.length ? `Sun overhead (90°) ${zenith.map(md).join(' & ')}` : `Highest sun ${md(iElMax)} · ${fDeg(el[iElMax])}`,
     ].join('  ·  ');
   }
 
@@ -891,8 +903,8 @@
     const tip = $('#stYearTip');
     tip.innerHTML = `<b>${new Date(day).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}<span class="tag">${tag}</span></b>
       <div><i style="background:#7cc4ff"></i>Day length: ${hmH(Yr.dl[k])}${rel ? ` (${dDl >= 0 ? '+' : '−'}${hmH(Math.abs(dDl) / HOUR)} vs today)` : ''}</div>
-      <div><i style="background:#ffc94d"></i>Max sun angle: ${fDeg(Yr.el[k])} at ${esc(fmtHM(ev.noon))}</div>
-      <div><i style="background:#ff9a3d"></i>${ev.polar === 'day' ? 'Midnight sun — no sunset' : ev.polar === 'night' ? 'Polar night — no sunrise' : `Sunrise ${esc(fmtHM(ev.rise))} · sunset ${esc(fmtHM(ev.set))}`}</div>`;
+      <div><i style="background:#ffc94d"></i>Max sun angle: ${Yr.zenith.includes(k) ? `90° — sun directly overhead (zenith passage) at ${esc(fmtHM(ev.noon))}` : `${fDeg(Yr.el[k])} at ${esc(fmtHM(ev.noon))}`}</div>
+      <div><i style="background:#ff9a3d"></i>${ev.polar === 'day' ? 'Midnight sun — no sunset' : ev.polar === 'night' ? 'Polar night — no sunrise' : ev.rise == null && ev.set == null ? 'Sunrise/sunset transition day' : `Sunrise ${esc(tOr(ev.rise, 'none'))} · sunset ${esc(tOr(ev.set, 'none'))}`}</div>`;
     placeTip(tip, svg, sx, Yr.Ye(Yr.el[k]));
   }
   function yearLeave() {
@@ -932,11 +944,12 @@
     let lbl, target, sub;
     if (today.polar === 'day') { lbl = 'Polar day'; target = null; sub = 'Sun stays up all day'; }
     else if (today.polar === 'night') { lbl = 'Polar night'; target = null; sub = 'Sun stays below the horizon'; }
+    else if (ST.whole) { lbl = 'Daylight today'; target = null; sub = today.rise != null ? `Midnight sun from ${fmtHM(today.rise)}` : today.set != null ? `First sunset after the midnight sun, at ${fmtHM(today.set)}` : 'Transition day'; $('#stCount').textContent = durHMS(today.dayLen); }
     else if (now < today.rise) { lbl = 'Sunrise in'; target = today.rise; sub = `Sunrise at ${fmtHM(today.rise)}`; }
     else if (now < today.set) { lbl = 'Daylight left'; target = today.set; sub = `${Math.round(((now - today.rise) / today.dayLen) * 100)}% of daylight elapsed`; }
     else { lbl = 'Sunrise in'; target = tmrw.rise; sub = num(tmrw.rise) ? `Tomorrow at ${fmtHM(tmrw.rise)}` : 'No sunrise tomorrow'; }
     $('#stCountLbl').textContent = lbl;
-    $('#stCount').textContent = num(target) ? durHMS(target - now) : '—';
+    if (!ST.whole || today.polar) $('#stCount').textContent = num(target) ? durHMS(target - now) : '—';
     $('#stCountSub').textContent = sub;
 
     const ph = SunCalc.phase(p.el);

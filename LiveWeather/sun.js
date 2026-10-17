@@ -71,13 +71,25 @@
       return { t };
     };
     const rise = at(-0.833, true), set = at(-0.833, false);  // −0.833° = refraction + solar radius
-    const polar = rise.polar === 'above' ? 'day' : rise.polar === 'below' ? 'night' : null;
     const pick = (o) => o.t ?? null;
-    const r = pick(rise), s = pick(set);
+    let polar = rise.polar === 'above' && set.polar === 'above' ? 'day' : rise.polar === 'below' && set.polar === 'below' ? 'night' : null;
+    let r = pick(rise), s = pick(set), dayLen;
+    if (polar === 'day') dayLen = DAY;
+    else if (polar === 'night') dayLen = 0;
+    else if (r != null && s != null && s > r && s - r <= DAY) dayLen = s - r;
+    else {
+      // first/last day of midnight sun or polar night: the iteration lands on different sides of the
+      // threshold for morning and evening, so integrate the time above the horizon instead (5-min steps)
+      const N = 288; let up = 0;
+      for (let k = 0; k < N; k++) if (position(noon - DAY / 2 + (k + 0.5) * DAY / N, lat, lon).geo > -0.833) up++;
+      dayLen = (up * DAY) / N;
+      if (up === N) polar = 'day'; else if (up === 0) polar = 'night';
+      if (polar || (r != null && s != null)) r = s = null; // keep a lone valid rise or set, drop an inconsistent pair
+    }
     return {
       noon, polar,
       rise: r, set: s,
-      dayLen: polar === 'day' ? DAY : polar === 'night' ? 0 : s - r,
+      dayLen,
       maxEl: position(noon, lat, lon).el,
       riseAz: r != null ? position(r, lat, lon).az : null,
       setAz: s != null ? position(s, lat, lon).az : null,

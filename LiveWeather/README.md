@@ -93,6 +93,8 @@ What the card shows (it is the last section on the page, since weather comes fir
   - Marks today and the extremes of both series, and gives midnight-sun or polar-night day counts at high latitudes.
   - **Hover or tap** any day to see its date (with "in N days" or "N days ago"), day length versus today, max sun angle with the solar-noon time, and sunrise and sunset.
   - Daily values are computed once per place and year by `yearData()` (366 × `SunCalc.times`) and cached.
+  - **Tropics:** zenith-passage days are found where the solar declination crosses your latitude, and every one gets a marker at 90°. Noon sampling can miss the exact crossing by up to ~0.2°, so those days are pinned to 90°.
+  - **Polar edges:** on the first and last day of the midnight sun or polar night, the sunrise/sunset solver can converge on only one side. Day length is then integrated numerically (5-min steps), and the curve covers midnight to midnight with only the rise or set that exists.
 
 When the static parts are rebuilt:
 - they are rebuilt when the location's calendar date, the location or the window size changes;
