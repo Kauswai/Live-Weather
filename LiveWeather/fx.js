@@ -4,7 +4,7 @@
  * Every drop has a depth z ∈ [0,1] that drives its length, speed, thickness and opacity (parallax),
  * drops are batched per depth layer into one path per frame, and the loop pauses when the tab is hidden.
  *
- * API: FX.set({ kind, intensity 0–1, windKmh, windFromDeg, isDay, hemisphere: 'N'|'S', stormBearing })
+ * API: FX.set({ kind, intensity 0–1, windKmh, windFromDeg, isDay, hemisphere: 'N'|'S', stormBearing, quality: 'full'|'lite'|'off' })
  */
 (function () {
   const canvas = document.getElementById('fx');
@@ -13,7 +13,8 @@
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const mobile = window.matchMedia('(max-width: 760px)').matches;
   let W = 0, H = 0, DPR = 1;
-  let cfg = { kind: 'none', intensity: 0, windKmh: 0, windFromDeg: 270, isDay: true, hemisphere: 'N', stormBearing: null };
+  let cfg = { kind: 'none', intensity: 0, windKmh: 0, windFromDeg: 270, isDay: true, hemisphere: 'N', stormBearing: null, quality: 'full' };
+  const qf = () => (cfg.quality === 'lite' ? 0.45 : 1);           // particle budget for the "Lite" effects setting
   let drops = [], splashes = [], flakes = [], hail = [], debris = [], spray = [], mist = [], fog = [], clouds = [], stars = [];
   let flash = 0, bolt = null, nextStrike = 0, distantFlash = null, raf = 0, last = 0, t = 0;
   let gust = 0, gustTarget = 0, spiral = null, spiralAngle = 0;
@@ -40,7 +41,7 @@
       storm:   { n: 700 + 300 * i, len: [20, 40], spd: [20, 32], w: [0.9, 2.0], a: [0.25, 0.62], mist: 3, splash: 1, sheets: true, dark: 0.24, lightning: true },
       cyclone: { n: 1000 + 400 * i, len: [26, 56], spd: [24, 38], w: [0.8, 1.9], a: [0.2, 0.55], mist: 4, splash: 0.5, sheets: true, dark: 0.3, lightning: true, cyclone: true },
     }[k];
-    if (P) P.n = Math.round(P.n * area * (mobile ? 0.55 : 1));
+    if (P) P.n = Math.round(P.n * area * (mobile ? 0.55 : 1) * qf());
     return P;
   }
 
@@ -70,13 +71,13 @@
       for (let n = 0; n < P.n; n++) drops.push(newDrop(P, true));
       for (let n = 0; n < P.mist; n++) mist.push({ x: rnd(0, W), y: rnd(H * 0.2, H), r: rnd(Math.max(W, H) * 0.25, Math.max(W, H) * 0.55), v: rnd(0.05, 0.25), a: cfg.kind === 'drizzle' ? rnd(0.05, 0.1) : rnd(0.03, 0.07) });
       if (P.cyclone) {
-        for (let n = 0; n < (mobile ? 25 : 60); n++) spray.push({ x: rnd(0, W), y: rnd(0, H), len: rnd(60, 200), spd: rnd(18, 34), a: rnd(0.04, 0.12) });
+        for (let n = 0; n < (mobile ? 25 : 60) * qf(); n++) spray.push({ x: rnd(0, W), y: rnd(0, H), len: rnd(60, 200), spd: rnd(18, 34), a: rnd(0.04, 0.12) });
         for (let n = 0; n < (mobile ? 8 : 16); n++) debris.push(newDebris(true));
       }
       if (cfg.hail) for (let n = 0; n < (mobile ? 40 : 90); n++) hail.push({ x: rnd(0, W), y: rnd(-H, H), r: rnd(1.2, 2.8), vy: rnd(10, 18), vx: 0, bounced: false, land: H * rnd(0.75, 1) });
     }
     if (cfg.kind === 'snow') {
-      const n = Math.round((120 + 380 * (cfg.intensity || 0.5)) * (W * H) / (1440 * 900) * (mobile ? 0.6 : 1));
+      const n = Math.round((120 + 380 * (cfg.intensity || 0.5)) * (W * H) / (1440 * 900) * (mobile ? 0.6 : 1) * qf());
       for (let k = 0; k < n; k++) flakes.push(newFlake(true));
     }
     if (cfg.kind === 'fog' || cfg.kind === 'drizzle') {
@@ -86,7 +87,7 @@
       for (let k = 0; k < (mobile ? 5 : 9); k++) clouds.push({ x: rnd(-W * 0.2, W), y: rnd(-H * 0.1, H * 0.45), r: rnd(120, 320), v: rnd(0.04, 0.18), a: rnd(0.04, cfg.kind === 'clouds' ? 0.09 : 0.06) });
     }
     if (cfg.kind === 'stars') {
-      for (let k = 0; k < (mobile ? 70 : 140); k++) stars.push({ x: rnd(0, W), y: rnd(0, H * 0.7), r: rnd(0.4, 1.4), p: rnd(0, Math.PI * 2), s: rnd(0.6, 2) });
+      for (let k = 0; k < (mobile ? 70 : 140) * qf(); k++) stars.push({ x: rnd(0, W), y: rnd(0, H * 0.7), r: rnd(0.4, 1.4), p: rnd(0, Math.PI * 2), s: rnd(0.6, 2) });
     }
   }
 
@@ -305,7 +306,7 @@
 
   function start() {
     cancelAnimationFrame(raf); last = 0;
-    if (cfg.kind === 'none') { ctx.clearRect(0, 0, W, H); return; }
+    if (cfg.kind === 'none' || cfg.quality === 'off') { ctx.clearRect(0, 0, W, H); return; }
     if (reduced) { frame(performance.now()); cancelAnimationFrame(raf); return; } // one static frame
     raf = requestAnimationFrame(frame);
   }
@@ -315,7 +316,7 @@
 
   window.FX = {
     set(next) {
-      const changed = next.kind !== cfg.kind || !!next.hail !== !!cfg.hail || Math.abs((next.intensity || 0) - (cfg.intensity || 0)) > 0.15;
+      const changed = next.kind !== cfg.kind || !!next.hail !== !!cfg.hail || Math.abs((next.intensity || 0) - (cfg.intensity || 0)) > 0.15 || (next.quality && next.quality !== cfg.quality);
       cfg = { ...cfg, ...next };
       if (changed || !W) { if (!W) resize(); else build(); start(); }
     },

@@ -92,5 +92,32 @@
     ? `<svg viewBox="0 0 48 48" aria-hidden="true"><path d="M24 6C13 6 5 14 4 24c2.5-2.5 5-2.5 7 0 2-2.5 5-2.5 6.5 0 2-2.5 5-2.5 6.5 0 1.5-2.5 4.5-2.5 6.5 0 2-2.5 4.5-2.5 6.5 0 2-2.5 4.5-2.5 7 0C43 14 35 6 24 6z" fill="currentColor"/><path d="M24 24v14a4 4 0 0 1-8 0" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><line x1="24" y1="3" x2="24" y2="6" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>`
     : `<svg viewBox="0 0 48 48" aria-hidden="true"><path d="M24 4 L30 30 H18 Z" fill="currentColor" opacity=".9"/><path d="M24 30v8a4 4 0 0 1-8 0" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>`;
 
-  window.WX = { iconSVG, WMO, scene, umbrellaSVG };
+  // Pulse Advisor glyphs (24×24 line art, coloured by the card's tone via currentColor)
+  const PULSE = {
+    jacket: '<path d="M9 3.5 12 5.5l3-2 4.5 2.6-1.8 4.6-1.7-.8V20H8V9.9l-1.7.8-1.8-4.6z"/><path d="M12 5.5V20"/>',
+    home: '<path d="M3.5 11.5 12 4l8.5 7.5"/><path d="M6 10v10h4.5v-5.5h3V20H18V10"/>',
+    heat: '<path d="M10 13.8V5a2 2 0 1 1 4 0v8.8a4 4 0 1 1-4 0z"/><path d="M12 9v7"/><path d="M18 4.5l1.5-1.2M19 8.5h2M18 12.5l1.5 1.2"/>',
+    cold: '<path d="M12 2.5v19M3.8 7.2l16.4 9.6M3.8 16.8l16.4-9.6"/><path d="M9.5 3.8 12 6l2.5-2.2M9.5 20.2 12 18l2.5 2.2"/>',
+    snow: '<path d="M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9"/>',
+    sun: '<circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/>',
+    mask: '<path d="M4 9c3-1.6 13-1.6 16 0v4.5c-1.2 3-4.6 5-8 5s-6.8-2-8-5z"/><path d="M4 10.5H2.5M20 10.5h1.5M8 12h8M8.5 15h7"/>',
+    fog: '<path d="M4 8h16M3 12h18M5 16h14M8 20h8"/>',
+    storm: '<path d="M7 16.5H6a4 4 0 0 1-.6-8A6 6 0 0 1 17 7.4 4.3 4.3 0 0 1 18 16h-.5"/><path d="m12.5 12-2.5 4.5h4L11.5 21"/>',
+    wind: '<path d="M3 8.5h10.5a2.6 2.6 0 1 0-2.6-2.6M3 12.5h15a2.8 2.8 0 1 1-2.8 2.8M3 16.5h7"/>',
+    ice: '<path d="M3 5h18"/><path d="M5.5 5l1.5 7 1.5-7M10.5 5l1.5 10 1.5-10M15.5 5l1.5 6 1.5-6"/>',
+    alert: '<path d="M12 3.5 2.5 20h19z"/><path d="M12 10v4.5M12 17.2v.1"/>',
+  };
+  function pulseSVG(kind) {
+    if (kind === 'umbrella') return umbrellaSVG(true);
+    if (kind === 'closed') return umbrellaSVG(false);
+    return `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${PULSE[kind] || PULSE.alert}</svg>`;
+  }
+
+  /** map marker: the cyclone symbol, arms mirrored for clockwise (southern-hemisphere) rotation */
+  const stormGlyph = (fill, south = false, size = 30) =>
+    `<svg width="${size}" height="${size}" viewBox="-12 -12 24 24" aria-hidden="true"><g class="spin${south ? ' s' : ''}"><g fill="${fill}" stroke="#0b1530" stroke-width="1"${south ? ' transform="scale(-1 1)"' : ''}>` +
+    '<path d="M1.6-2.9C.5-7.6-4.3-10-9.2-8.3c3.7.4 6.3 2.4 7.1 5.7z"/><path d="M1.6-2.9C.5-7.6-4.3-10-9.2-8.3c3.7.4 6.3 2.4 7.1 5.7z" transform="rotate(180)"/>' +
+    '<circle r="4.2"/></g><circle r="1.5" fill="#0b1530"/></g></svg>';
+
+  window.WX = { iconSVG, WMO, scene, umbrellaSVG, pulseSVG, stormGlyph };
 })();

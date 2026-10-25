@@ -1,7 +1,7 @@
 {
   "name": "SkyPulse · Live Weather",
   "short_name": "SkyPulse",
-  "description": "Live weather for your exact location: past, present and future conditions, umbrella advisor, tropical-cyclone tracking and local warnings.",
+  "description": "Live weather for your exact location: past, present and future conditions, the Pulse Advisor, a live tropical-cyclone tracker and local warnings.",
   "start_url": "./?source=pwa",
   "scope": "./",
   "display": "standalone",
@@ -16,7 +16,8 @@
     { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
   ],
   "shortcuts": [
-    { "name": "Alerts & storms", "url": "./?tab=alerts", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Cyclone tracker", "url": "./?tab=storms", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Alerts", "url": "./?tab=alerts", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
     { "name": "Forecast", "url": "./?tab=forecast", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] }
   ]
 }

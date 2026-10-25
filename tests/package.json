@@ -1,0 +1,14 @@
+{
+  "name": "skypulse-tests",
+  "private": true,
+  "description": "Dev-only checks for the SkyPulse site (not deployed).",
+  "type": "module",
+  "scripts": {
+    "pulse": "node pulse.test.mjs",
+    "smoke": "node smoke.mjs ../smoke-out",
+    "test": "node pulse.test.mjs && node smoke.mjs ../smoke-out"
+  },
+  "devDependencies": {
+    "playwright": "^1.48.0"
+  }
+}

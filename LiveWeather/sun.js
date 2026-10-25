@@ -1,4 +1,5 @@
-/* Solar position & sun-event maths (NOAA / Meeus algorithm, accurate to ~1 minute for ±100 years).
+/* SkyPulse solar maths: sun position and sun events from the NOAA Solar Calculator equations (after Meeus),
+ * accurate to ~1 minute for ±100 years. Written for SkyPulse; exposed as window.Solar.
  * All times are epoch milliseconds; latitude/longitude in degrees (east positive).
  */
 (function () {
@@ -111,5 +112,5 @@
     return 'Night';
   }
 
-  window.SunCalc = { solar, position, times, phase, DAY };
+  window.Solar = { solar, position, times, phase, DAY };
 })();

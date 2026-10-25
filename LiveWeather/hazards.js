@@ -2,7 +2,7 @@
  *
  * Data in:  data/tropical.json (built every 30 min by pipeline/fetch_tropical.py from NHC, JMA, JTWC, IMD, GDACS, NDMA SACHET)
  *           + live browser calls: NWS alerts (US), HKO warnings (Hong Kong), Open-Meteo elevation (coastline probe) and marine (waves, SST).
- * Out:      the Warnings card, the Tropical-cyclone card (Leaflet track map, impacts at your location) and the storm list.
+ * Out:      the Warnings card and the selected storm's detail card; storms.js draws the world map and storm list.
  *
  * Wind at the user's point is *estimated* from agency quadrant wind radii with a piecewise power-law vortex
  * (RMW → 64 kt → 50 kt → 34 kt radii, then r^-0.6 decay). Directions use ~20° inflow around the centre.
@@ -16,7 +16,7 @@
   const RAD = Math.PI / 180;
   let H = null;                    // helpers injected by app.js
   const st = { data: null, dataAt: 0, dataErr: null, coast: null, coastKey: null, marine: null, marineAt: 0, marineKey: null,
-               nws: null, nwsAt: 0, nwsKey: null, hko: null, hkoAt: 0, sel: null, map: null, layers: null, last: null, ctx: null };
+               nws: null, nwsAt: 0, nwsKey: null, hko: null, hkoAt: 0, last: null, ctx: null };
 
   /* ------------------------------------------------------------ geodesy */
   function distKm(a, b, c, d) {
@@ -38,6 +38,7 @@
   const angDiff = (a, b) => { const d = Math.abs((((a - b) % 360) + 360) % 360); return d > 180 ? 360 - d : d; };
   const unwrap = (lon, ref) => { while (lon - ref > 180) lon -= 360; while (ref - lon > 180) lon += 360; return lon; };
   const lerp = (a, b, f) => a + (b - a) * f;
+  /** point-in-polygon by ray casting (even–odd rule), longitudes unwrapped around the ring's first vertex */
   function inRing(lat, lon, ring) {
     if (!ring || ring.length < 3) return false;
     const ref = ring[0][1]; lon = unwrap(lon, ref);
@@ -96,7 +97,20 @@
     MU: ['Mauritius Meteorological Services', 'http://metservice.intnet.mu/'], ID: ['BMKG Indonesia', 'https://www.bmkg.go.id/'], MY: ['MetMalaysia', 'https://www.met.gov.my/'],
     KH: ['Cambodia Ministry of Water Resources & Meteorology', 'https://www.cambodiameteo.com/'], LA: ['Lao Dept. of Meteorology & Hydrology', 'http://dmh.gov.la/'],
     YE: ['Yemen Meteorological Service', 'https://www.ycaa.gov.ye/'], SO: ['SWALIM Somalia', 'https://www.faoswalim.org/'], AE: ['UAE National Center of Meteorology', 'https://www.ncm.gov.ae/'],
+    // Europe and beyond (official warning services); other European countries fall back to MeteoAlarm
+    GB: ['Met Office', 'https://www.metoffice.gov.uk/weather/warnings-and-advice/uk-warnings'], IE: ['Met Éireann', 'https://www.met.ie/warnings'],
+    FR: ['Météo-France Vigilance', 'https://vigilance.meteofrance.fr/'], DE: ['Deutscher Wetterdienst', 'https://www.dwd.de/'], NL: ['KNMI', 'https://www.knmi.nl/nederland-nu/weer/waarschuwingen'],
+    BE: ['Royal Meteorological Institute of Belgium', 'https://www.meteo.be/'], LU: ['MeteoLux', 'https://www.meteolux.lu/'], CH: ['MeteoSwiss', 'https://www.meteoswiss.admin.ch/'],
+    AT: ['GeoSphere Austria', 'https://www.geosphere.at/'], ES: ['AEMET', 'https://www.aemet.es/es/eltiempo/prediccion/avisos'], PT: ['IPMA', 'https://www.ipma.pt/'],
+    IT: ['Aeronautica Militare – Servizio Meteo', 'https://www.meteoam.it/'], GR: ['Hellenic National Meteorological Service', 'https://www.emy.gr/'], PL: ['IMGW-PIB', 'https://meteo.imgw.pl/'],
+    CZ: ['Czech Hydrometeorological Institute', 'https://www.chmi.cz/'], SK: ['Slovak Hydrometeorological Institute', 'https://www.shmu.sk/'], HU: ['HungaroMet', 'https://www.met.hu/'],
+    SI: ['ARSO Meteo', 'https://meteo.arso.gov.si/'], HR: ['DHMZ Croatia', 'https://meteo.hr/'], RO: ['Romanian National Meteorological Administration', 'https://www.meteoromania.ro/'],
+    DK: ['DMI', 'https://www.dmi.dk/'], SE: ['SMHI', 'https://www.smhi.se/'], NO: ['MET Norway (Yr)', 'https://www.yr.no/'], FI: ['Finnish Meteorological Institute', 'https://en.ilmatieteenlaitos.fi/'],
+    IS: ['Icelandic Met Office', 'https://en.vedur.is/'], CA: ['Environment and Climate Change Canada', 'https://weather.gc.ca/'], BR: ['INMET', 'https://portal.inmet.gov.br/'],
+    AR: ['Servicio Meteorológico Nacional', 'https://www.smn.gob.ar/'], ZA: ['South African Weather Service', 'https://www.weathersa.co.za/'], SG: ['Meteorological Service Singapore', 'https://www.weather.gov.sg/'],
+    TR: ['Turkish State Meteorological Service', 'https://www.mgm.gov.tr/'], IL: ['Israel Meteorological Service', 'https://ims.gov.il/'], SA: ['National Center for Meteorology', 'https://ncm.gov.sa/'],
   };
+  const METEOALARM = new Set('AD AL BA BG BY CY EE FO GI LI LT LV MC MD ME MK MT RS SM UA VA XK'.split(' '));
 
   /* ------------------------------------------------- track normalisation */
   function nearest(points, t, maxH) {
@@ -232,7 +246,7 @@
 
   function surgeRisk({ coast, onshorePeak, dangerous, flow, cpa, s }) {
     if (!coast) return { level: 'unknown', text: 'Coastline not analysed yet.' };
-    if (!coast.coastal || coast.distKm > 20) return { level: 'none', text: `About ${coast.coastal ? Math.round(coast.distKm) : '30+'} km from the open sea — outside the storm-surge zone. River and flash flooding from heavy rain remain possible.` };
+    if (!coast.coastal || coast.distKm > 20) return { level: 'none', text: `About ${coast.coastal ? H.fD(coast.distKm) : 'more than ' + H.fD(30)} from the open sea — outside the storm-surge zone. River and flash flooding from heavy rain remain possible.` };
     if (!flow || !flow.length || onshorePeak < 25) {
       const off = flow?.some((f) => f.kind === 'offshore');
       return { level: 'low', text: off ? 'Cyclone winds blow offshore here (land → sea), pushing water away from this coast — surge risk is low, though rough seas and swell still reach the shore.' : 'Cyclone winds are not expected to blow strongly onshore here.' };
@@ -244,9 +258,9 @@
     const level = score >= 4 ? 'high' : score >= 3 ? 'elevated' : score >= 2 ? 'moderate' : 'low';
     const on = flow.filter((f) => f.kind === 'onshore');
     const span = on.length ? `${H.fmtDay(on[0].t)} ${H.fmtHM(on[0].t)} – ${H.fmtDay(on[on.length - 1].t)} ${H.fmtHM(on[on.length - 1].t)}` : '';
-    const parts = [`Onshore winds (from the sea, ${H.dirName(coast.seaBearing)} side) up to ~${Math.round(onshorePeak * KT)} km/h ${span ? 'from ' + span : ''}.`];
+    const parts = [`Onshore winds (from the sea, ${H.dirName(coast.seaBearing)} side) up to ~${H.fW(onshorePeak * KT)} ${H.wU()} ${span ? 'from ' + span : ''}.`];
     if (dangerous) parts.push(`You are on the ${s.lat < 0 ? 'left' : 'right'}-hand (dangerous) side of the track, where winds and surge are strongest.`);
-    if (coast.elev != null) parts.push(`Ground elevation here ≈ ${Math.round(coast.elev)} m, ${coast.distKm < 2 ? 'right on' : '~' + Math.round(coast.distKm) + ' km from'} the coast.`);
+    if (coast.elev != null) parts.push(`Ground elevation here ≈ ${Math.round(coast.elev)} m, ${coast.distKm < 2 ? 'right on' : '~' + H.fD(coast.distKm) + ' from'} the coast.`);
     return { level, text: parts.join(' '), onshorePeak };
   }
 
@@ -283,7 +297,7 @@
   async function coastProbe(lat, lon) {
     const R = [1.5, 4, 8, 15, 30], pts = [[lat, lon]];
     for (const r of R) for (let k = 0; k < 16; k++) pts.push(dest(lat, lon, k * 22.5, r));
-    const url = 'https://api.open-meteo.com/v1/elevation?latitude=' + pts.map((p) => p[0].toFixed(4)).join(',') + '&longitude=' + pts.map((p) => (((p[1] + 540) % 360) - 180).toFixed(4)).join(',');
+    const url = 'https://api.open-meteo.com/v1/elevation?latitude=' + pts.map((p) => p[0].toFixed(3)).join(',') + '&longitude=' + pts.map((p) => (((p[1] + 540) % 360) - 180).toFixed(3)).join(',');
     const e = (await H.getJSON(url, 12000)).elevation;
     const elev = e[0];
     let first = -1, water = [], seaPoint = null;
@@ -320,7 +334,7 @@
     };
   }
   const seaState = (m) => m == null ? '–' : m < 0.1 ? 'Calm' : m < 0.5 ? 'Smooth' : m < 1.25 ? 'Slight' : m < 2.5 ? 'Moderate' : m < 4 ? 'Rough' : m < 6 ? 'Very rough' : m < 9 ? 'High' : m < 14 ? 'Very high' : 'Phenomenal';
-  const fWave = (m) => (m == null ? '–' : H.unit() === 'F' ? `${(m * 3.281).toFixed(1)} ft` : `${m.toFixed(1)} m`);
+  const fWave = (m) => (m == null ? '–' : H.miles() ? `${(m * 3.281).toFixed(1)} ft` : `${m.toFixed(1)} m`);
 
   /* ------------------------------------------------------------ warnings */
   const LV = { red: 3, orange: 2, yellow: 1, info: 0 };
@@ -387,9 +401,9 @@
     // tropical cyclone
     if (threat && (threat.level === 'direct' || threat.level === 'near')) {
       const s = threat.s, nm = `${s.classText || 'Tropical cyclone'} ${s.name}`;
-      if (threat.hu) out.push({ id: 'tc-hu-' + s.key, level: 'red', icon: '🌀', kind: 'cyclone', title: `${nm}: hurricane/typhoon-force winds possible`, start: threat.hu.start, end: threat.hu.end, text: `Sustained winds ≥ 118 km/h estimated ${span(threat.hu.start, threat.hu.end)}. Closest approach ${Math.round(threat.cpa.dKm)} km at ${H.fmtDay(threat.cpa.t)} ${H.fmtHM(threat.cpa.t)}.`, advice: 'Follow evacuation orders from local authorities. Shelter in a strong building away from windows; the calm of the eye is followed by winds from the opposite direction.', source: 'derived-tc' });
-      else if (threat.ts) out.push({ id: 'tc-ts-' + s.key, level: 'orange', icon: '🌀', kind: 'cyclone', title: `${nm}: gale/storm-force winds expected`, start: threat.ts.start, end: threat.ts.end, text: `Sustained winds ≥ 63 km/h estimated ${span(threat.ts.start, threat.ts.end)}. Closest approach ${Math.round(threat.cpa.dKm)} km at ${H.fmtDay(threat.cpa.t)} ${H.fmtHM(threat.cpa.t)}.`, advice: 'Finish preparations before winds arrive; charge phones, store water, secure outdoor objects.', source: 'derived-tc' });
-      else out.push({ id: 'tc-near-' + s.key, level: 'yellow', icon: '🌀', kind: 'cyclone', title: `${nm} passing within ${Math.round(threat.cpa.dKm)} km`, start: threat.cpa.t, end: threat.cpa.t, text: `Closest approach around ${H.fmtDay(threat.cpa.t)} ${H.fmtHM(threat.cpa.t)}; outer rain bands and gusty winds possible.`, advice: 'Monitor official advisories — track forecasts can shift.', source: 'derived-tc' });
+      if (threat.hu) out.push({ id: 'tc-hu-' + s.key, level: 'red', icon: '🌀', kind: 'cyclone', title: `${nm}: hurricane/typhoon-force winds possible`, start: threat.hu.start, end: threat.hu.end, text: `Sustained winds ≥ ${H.fW(118)} ${H.wU()} estimated ${span(threat.hu.start, threat.hu.end)}. Closest approach ${H.fD(threat.cpa.dKm)} at ${H.fmtDay(threat.cpa.t)} ${H.fmtHM(threat.cpa.t)}.`, advice: 'Follow evacuation orders from local authorities. Shelter in a strong building away from windows; the calm of the eye is followed by winds from the opposite direction.', source: 'derived-tc' });
+      else if (threat.ts) out.push({ id: 'tc-ts-' + s.key, level: 'orange', icon: '🌀', kind: 'cyclone', title: `${nm}: gale/storm-force winds expected`, start: threat.ts.start, end: threat.ts.end, text: `Sustained winds ≥ ${H.fW(63)} ${H.wU()} estimated ${span(threat.ts.start, threat.ts.end)}. Closest approach ${H.fD(threat.cpa.dKm)} at ${H.fmtDay(threat.cpa.t)} ${H.fmtHM(threat.cpa.t)}.`, advice: 'Finish preparations before winds arrive; charge phones, store water, secure outdoor objects.', source: 'derived-tc' });
+      else out.push({ id: 'tc-near-' + s.key, level: 'yellow', icon: '🌀', kind: 'cyclone', title: `${nm} passing within ${H.fD(threat.cpa.dKm)}`, start: threat.cpa.t, end: threat.cpa.t, text: `Closest approach around ${H.fmtDay(threat.cpa.t)} ${H.fmtHM(threat.cpa.t)}; outer rain bands and gusty winds possible.`, advice: 'Monitor official advisories — track forecasts can shift.', source: 'derived-tc' });
       if (threat.surge && ['high', 'elevated', 'moderate'].includes(threat.surge.level)) out.push({ id: 'tc-surge-' + s.key, level: threat.surge.level === 'high' ? 'red' : threat.surge.level === 'elevated' ? 'orange' : 'yellow', icon: '🌊', kind: 'surge', title: `Storm-surge risk: ${threat.surge.level}`, start: threat.cpa.t, end: threat.cpa.t, text: threat.surge.text, advice: 'Move away from the shoreline and low-lying coastal areas if told to evacuate. Surge is the deadliest cyclone hazard.', source: 'derived-tc' });
       threat.official.forEach((o, k) => out.push({ id: `tc-off-${s.key}-${k}`, icon: '📍', kind: 'cyclone', ...o, source: 'official', agency: s.official?.code || s.source }));
     }
@@ -397,7 +411,7 @@
   }
 
   function nwsWarnings(d) {
-    return (d?.features || []).map((f) => {
+    return (Array.isArray(d?.features) ? d.features : []).filter((f) => f && f.properties).map((f) => {
       const p = f.properties;
       const lv = p.severity === 'Extreme' ? 'red' : p.severity === 'Severe' ? 'orange' : p.severity === 'Moderate' ? 'yellow' : 'info';
       return { id: 'nws-' + p.id, level: lv, icon: /hurricane|tropical|storm surge/i.test(p.event) ? '🌀' : /flood/i.test(p.event) ? '🌊' : /wind/i.test(p.event) ? '💨' : '⚠️', kind: 'official', title: p.event,
@@ -423,12 +437,12 @@
   }
   function hkoWarnings(d) {
     if (!d) return [];
-    return Object.values(d).map((w) => ({ id: 'hko-' + w.code, level: /TC8|TC9|TC10|WRAINB|WRAINR/.test(w.code) ? 'red' : /TC3|WRAINA|WTS/.test(w.code) ? 'orange' : 'yellow', icon: w.code?.startsWith('TC') ? '🌀' : '⚠️',
+    return Object.values(d).filter((w) => w && typeof w === 'object').map((w) => ({ id: 'hko-' + w.code, level: /TC8|TC9|TC10|WRAINB|WRAINR/.test(w.code) ? 'red' : /TC3|WRAINA|WTS/.test(w.code) ? 'orange' : 'yellow', icon: String(w.code || '').startsWith('TC') ? '🌀' : '⚠️',
       kind: 'official', title: w.name + (w.type ? ` (${w.type})` : ''), start: Date.parse(w.issueTime), end: null, text: `${w.actionCode === 'CANCEL' ? 'Cancelled' : 'In force'} since ${H.fmtHM(Date.parse(w.issueTime))}`, source: 'official', agency: 'Hong Kong Observatory' }));
   }
   function gdacsWarnings(ctx, threat) {
     const g = threat?.s?.gdacs; if (!g || !ctx.countryName || !(threat.level === 'direct' || threat.level === 'near')) return [];
-    if (!(g.countries || []).some((c) => norm(c) === norm(ctx.countryName))) return [];
+    if (!Array.isArray(g.countries) || !g.countries.some((c) => norm(c) === norm(ctx.countryName))) return [];
     const lv = g.alertLevel === 'Red' ? 'red' : g.alertLevel === 'Orange' ? 'orange' : 'yellow';
     return [{ id: 'gdacs-' + g.eventId, level: lv, icon: '🌐', kind: 'official', title: `GDACS ${g.alertLevel} alert: ${threat.s.name}`, start: null, end: null, text: `${g.severity || ''} — affected: ${(g.countries || []).join(', ')}.`, source: 'official', agency: 'GDACS (UN/EC)', link: g.report }];
   }
@@ -448,7 +462,7 @@
           ${w.start ? `<div class="w-time">${LV_TXT[w.level] || ''} · ${w.end && w.end !== w.start ? `${H.esc(H.fmtDay(w.start))} ${H.esc(H.fmtHM(w.start))} → ${H.esc(H.fmtDay(w.end))} ${H.esc(H.fmtHM(w.end))}` : `${H.esc(H.fmtDay(w.start))} ${H.esc(H.fmtHM(w.start))}`}</div>` : `<div class="w-time">${LV_TXT[w.level] || ''}</div>`}
           <p>${H.esc(w.text || '')}</p>
           ${w.area ? `<p class="w-area">Area: ${H.esc(w.area)}</p>` : ''}
-          ${w.description || w.advice ? `<details><summary>What to do${w.description ? ' · details' : ''}</summary>${w.advice ? `<p>${H.esc(w.advice)}</p>` : ''}${w.description ? `<p class="w-desc">${H.esc(w.description).replace(/\n/g, '<br>')}</p>` : ''}${w.link ? `<p><a href="${H.esc(w.link)}" target="_blank" rel="noopener">More</a></p>` : ''}</details>` : ''}
+          ${w.description || w.advice ? `<details><summary>What to do${w.description ? ' · details' : ''}</summary>${w.advice ? `<p>${H.esc(w.advice)}</p>` : ''}${w.description ? `<p class="w-desc">${H.esc(w.description).replace(/\n/g, '<br>')}</p>` : ''}${H.safeUrl(w.link) ? `<p><a href="${H.esc(H.safeUrl(w.link))}" target="_blank" rel="noopener">More</a></p>` : ''}</details>` : ''}
         </div>
       </li>`).join('') : `<li class="warn-none">✓ No warnings for your area right now. <span class="muted">Checked: ${H.esc(sourcesChecked())}</span></li>`;
   }
@@ -462,46 +476,40 @@
     return s.join(' · ');
   }
 
-  function stormRow(a) {
-    const s = a.s, c = ssColor(a.cur.vmax);
-    return `<li><button class="storm-row ${st.sel === s.key ? 'sel' : ''}" data-key="${H.esc(s.key)}">
-      <span class="sdot" style="background:${c}"></span>
-      <span class="s-name"><b>${H.esc(s.name)}</b><small>${H.esc(s.classText || '')} · ${H.esc(s.basinName || s.basin)}</small></span>
-      <span class="s-int">${H.fW((s.vmaxKt || 0) * KT)} ${H.wU()}<small>${s.pressure ? s.pressure + ' hPa' : ''}</small></span>
-      <span class="s-dist">${Math.round(a.dNow).toLocaleString()} km<small>${H.dirName(bearing(st.ctx.loc.lat, st.ctx.loc.lon, a.cur.lat, a.cur.lon))}</small></span>
-    </button></li>`;
-  }
-
   const threatTxt = { direct: 'Direct threat', near: 'Close pass', watch: 'Approaching', far: 'Far away' };
-  function renderStorm(a) {
+  /** the selected storm's detail card (the map itself is drawn by storms.js) */
+  function renderDetail(a) {
     const card = $('#tcCard'); if (!card) return;
     if (!a) { card.hidden = true; return; }
     card.hidden = false;
     const s = a.s, loc = st.ctx.loc, kt1 = a.cur.vmax || 0, cat = ssCat(kt1);
     const kmh = (kt) => `${H.fW(kt * KT)} ${H.wU()}`;
+    const nmD = (nm) => H.fD(nm * NM);
+    const when = (t) => `${H.esc(H.fmtDay(t))} ${H.esc(H.fmtHM(t))}`;
     $('#tcTitle').innerHTML = `<span class="tc-badge" style="background:${cat[2]}">${H.esc(cat[1])}</span> ${H.esc(s.classText || 'Tropical cyclone')} <b>${H.esc(s.name)}</b>`;
     $('#tcThreat').className = 'tc-threat t-' + a.level;
     const head = a.level === 'direct'
-      ? (a.hu ? `Hurricane/typhoon-force winds possible here ${H.fmtDay(a.hu.start)} ${H.fmtHM(a.hu.start)} – ${H.fmtDay(a.hu.end)} ${H.fmtHM(a.hu.end)}.` : a.ts ? `Gale-force (≥ 63 km/h) winds expected here ${H.fmtDay(a.ts.start)} ${H.fmtHM(a.ts.start)} – ${H.fmtDay(a.ts.end)} ${H.fmtHM(a.ts.end)}.` : 'The centre is forecast to pass very close.')
-      : a.level === 'near' ? `Passing ${Math.round(a.cpa.dKm)} km from you — outer rain bands and gusty winds possible.`
-      : a.level === 'watch' ? `Approaching: now ${Math.round(a.dNow).toLocaleString()} km away.` : `No threat to your location (${Math.round(a.dNow).toLocaleString()} km away).`;
-    $('#tcThreat').innerHTML = `<b>${threatTxt[a.level]}</b> ${H.esc(head)} ${a.series.length ? `Closest approach <b>${Math.round(a.cpa.dKm).toLocaleString()} km</b> (${H.dirName((a.cpa.brg + 180) % 360)} of you) at ${H.esc(H.fmtDay(a.cpa.t))} ${H.esc(H.fmtHM(a.cpa.t))}${a.side ? `, ${a.dangerous ? 'on the dangerous side' : 'on the weaker side'} of the track` : ''}.` : ''}`;
+      ? (a.hu ? `Hurricane/typhoon-force winds possible here ${H.fmtDay(a.hu.start)} ${H.fmtHM(a.hu.start)} – ${H.fmtDay(a.hu.end)} ${H.fmtHM(a.hu.end)}.` : a.ts ? `Gale-force (≥ ${kmh(34)}) winds expected here ${H.fmtDay(a.ts.start)} ${H.fmtHM(a.ts.start)} – ${H.fmtDay(a.ts.end)} ${H.fmtHM(a.ts.end)}.` : 'The centre is forecast to pass very close.')
+      : a.level === 'near' ? `Passing ${H.fD(a.cpa.dKm)} from you — outer rain bands and gusty winds possible.`
+      : a.level === 'watch' ? `Approaching: now ${H.fD(a.dNow)} away.` : `No threat to your location (${H.fD(a.dNow)} away).`;
+    $('#tcThreat').innerHTML = `<b>${threatTxt[a.level]}</b> ${H.esc(head)} ${a.series.length ? `Closest approach <b>${H.esc(H.fD(a.cpa.dKm))}</b> (${H.dirName((a.cpa.brg + 180) % 360)} of you) at ${when(a.cpa.t)}${a.side ? `, ${a.dangerous ? 'on the dangerous side' : 'on the weaker side'} of the track` : ''}.` : ''}`;
 
     // intensity facts
     const scales = localScales(s, kt1).map(([k, v]) => `<div class="stat"><small>${H.esc(k)}</small><b>${H.esc(v)}</b></div>`).join('');
     const mv = s.moveKt != null ? `${H.esc(s.moveText || H.dirName(s.moveDir ?? 0))} ${s.moveDir != null ? `(${Math.round(s.moveDir)}°)` : ''} at ${H.fW(s.moveKt * KT)} ${H.wU()}` : '–';
+    const r34 = s.radii?.['34'], r64 = s.radii?.['64'];
     $('#tcFacts').innerHTML = `
-      <div class="stat"><small>Max sustained (${H.esc(s.windAvg || '1-min')})</small><b>${kmh(s.vmaxKt || 0)}</b><span>${s.vmaxKt} kt${s.windAvg === '10-min' ? ` · ≈${Math.round(kt1)} kt 1-min` : ''}</span></div>
-      <div class="stat"><small>Gusts</small><b>${s.gustKt ? kmh(s.gustKt) : '–'}</b><span>${s.gustKt ? s.gustKt + ' kt' : ''}</span></div>
-      <div class="stat"><small>Central pressure</small><b>${s.pressure ? s.pressure + ' hPa' : '–'}</b><span>${s.eyeNm ? `Eye ${Math.round(s.eyeNm * NM)} km wide` : ''}</span></div>
+      <div class="stat"><small>Max sustained (${H.esc(s.windAvg || '1-min')})</small><b>${kmh(s.vmaxKt || 0)}</b><span>${s.vmaxKt != null ? Math.round(s.vmaxKt) + ' kt' : ''}${s.windAvg === '10-min' ? ` · ≈${Math.round(kt1)} kt 1-min` : ''}</span></div>
+      <div class="stat"><small>Gusts</small><b>${s.gustKt ? kmh(s.gustKt) : '–'}</b><span>${s.gustKt ? Math.round(s.gustKt) + ' kt' : ''}</span></div>
+      <div class="stat"><small>Central pressure</small><b>${s.pressure ? `${H.fPr(s.pressure)} ${H.esc(H.prU())}` : '–'}</b><span>${s.eyeNm ? `Eye ${H.esc(nmD(s.eyeNm))} wide` : ''}</span></div>
       <div class="stat"><small>Movement</small><b>${mv}</b><span>${a.approaching ? 'Approaching you' : 'Not approaching'}</span></div>
-      <div class="stat"><small>Distance now</small><b>${Math.round(a.dNow).toLocaleString()} km</b><span>${H.dirName((a.brgNow + 180) % 360)} of you</span></div>
-      <div class="stat"><small>Wind field</small><b>${s.radii?.['34'] ? Math.round(Math.max(...s.radii['34']) * NM) + ' km' : '–'}</b><span>Gale radius (34 kt)${s.radii?.['64'] ? ` · ${Math.round(Math.max(...s.radii['64']) * NM)} km hurricane-force` : ''}</span></div>
+      <div class="stat"><small>Distance now</small><b>${H.esc(H.fD(a.dNow))}</b><span>${H.dirName((a.brgNow + 180) % 360)} of you</span></div>
+      <div class="stat"><small>Wind field</small><b>${r34 ? H.esc(nmD(Math.max(...r34))) : '–'}</b><span>Gale radius (34 kt)${r64 ? ` · ${H.esc(nmD(Math.max(...r64)))} hurricane-force` : ''}</span></div>
       ${scales}`;
 
     // local impacts
     const imp = [];
-    if (a.peak && a.peak.sust >= 15) imp.push(`<div class="imp"><b>💨 Peak wind here</b><span>~${kmh(a.peak.sust)} sustained, gusts ~${kmh(a.peak.gust)} around ${H.esc(H.fmtDay(a.peak.t))} ${H.esc(H.fmtHM(a.peak.t))} (from the ${H.dirName(a.peak.from)}).${a.ts ? ` Gale-force for ~${a.ts.hours} h.` : ''}</span></div>`);
+    if (a.peak && a.peak.sust >= 15) imp.push(`<div class="imp"><b>💨 Peak wind here</b><span>~${kmh(a.peak.sust)} sustained, gusts ~${kmh(a.peak.gust)} around ${when(a.peak.t)} (from the ${H.dirName(a.peak.from)}).${a.ts ? ` Gale-force for ~${a.ts.hours} h.` : ''}</span></div>`);
     else imp.push(`<div class="imp"><b>💨 Wind here</b><span>Cyclone winds should stay below ~${kmh(Math.max(5, a.peak?.sust || 0))} at your location.</span></div>`);
     if (a.ts) {
       const seq = []; a.series.filter((p) => p.sust >= 25).forEach((p, k, arr) => { if (k % 3 === 0 || k === arr.length - 1) { const d = H.dirName(p.from); if (seq[seq.length - 1] !== d) seq.push(d); } });
@@ -510,55 +518,60 @@
     const coast = st.ctx.coast;
     if (coast?.coastal && a.flow?.length) {
       const segs = []; a.flow.forEach((f) => { if (!segs.length || segs[segs.length - 1].kind !== f.kind) segs.push({ kind: f.kind, a: f.t, b: f.t }); else segs[segs.length - 1].b = f.t; });
-      imp.push(`<div class="imp"><b>🏖️ Onshore / offshore</b><span>Sea lies to the ${H.dirName(coast.seaBearing)} (~${Math.round(coast.distKm)} km). ${segs.map((g) => `<em class="flow ${g.kind}">${g.kind}</em> ${H.esc(H.fmtDay(g.a))} ${H.esc(H.fmtHM(g.a))}–${H.esc(H.fmtHM(g.b))}`).join(' · ')}. Onshore winds pile water against the coast (raising surge and waves); offshore winds push it away.</span></div>`);
-    } else if (coast && !coast.coastal) imp.push(`<div class="imp"><b>🏖️ Onshore / offshore</b><span>More than 30 km from the open sea — onshore/offshore flow and surge don’t apply here.</span></div>`);
-    if (a.surge) imp.push(`<div class="imp surge-${a.surge.level}"><b>🌊 Storm surge: ${H.esc(a.surge.level)}</b><span>${H.esc(a.surge.text)}${surgeOfficial(s)}</span></div>`);
+      imp.push(`<div class="imp"><b>🏖️ Onshore / offshore</b><span>Sea lies to the ${H.dirName(coast.seaBearing)} (~${H.esc(H.fD(coast.distKm))}). ${segs.map((g) => `<em class="flow ${g.kind}">${g.kind}</em> ${when(g.a)}–${H.esc(H.fmtHM(g.b))}`).join(' · ')}. Onshore winds pile water against the coast (raising surge and waves); offshore winds push it away.</span></div>`);
+    } else if (coast && !coast.coastal) imp.push(`<div class="imp"><b>🏖️ Onshore / offshore</b><span>More than ${H.esc(H.fD(30))} from the open sea — onshore/offshore flow and surge don’t apply here.</span></div>`);
+    if (a.surge) imp.push(`<div class="imp surge-${H.esc(a.surge.level)}"><b>🌊 Storm surge: ${H.esc(a.surge.level)}</b><span>${H.esc(a.surge.text)}${surgeOfficial(s)}</span></div>`);
     if (a.rain) imp.push(`<div class="imp"><b>🌧️ Rain during passage</b><span>~${H.fP(a.rain.sum)} ${H.pU()} forecast ${H.esc(H.fmtDay(a.rain.from))}–${H.esc(H.fmtDay(a.rain.to))}${a.rain.maxHr >= 10 ? `, up to ${H.fP(a.rain.maxHr)} ${H.pU()}/h` : ''} (model).${rainOfficial(s)}</span></div>`);
     const m = st.marine;
-    if (m && coast?.coastal && coast.distKm <= 30) imp.push(`<div class="imp"><b>🌊 Waves (nearest sea)</b><span>Now ${fWave(m.now.hs)} (${seaState(m.now.hs)}), peak ${fWave(m.peak.hs)} ${H.dirName(m.peak.dir)} at ${H.esc(H.fmtDay(m.peak.t))} ${H.esc(H.fmtHM(m.peak.t))}, period ${Math.round(m.peak.per || 0)} s${m.now.sst != null ? ` · sea temp ${H.fT(m.now.sst)}` : ''}.${s.maxWaveFt ? ` Agency max wave near the centre: ${fWave(s.maxWaveFt / 3.281)}.` : ''}${s.seas ? ` ${s.seas.height} ${s.seas.unit} seas extend ${Math.round(Math.max(...s.seas.radiiNm) * NM)} km from the centre.` : ''}</span></div>`);
-    else if (s.maxWaveFt || s.seas) imp.push(`<div class="imp"><b>🌊 Waves near the storm</b><span>${s.maxWaveFt ? `Max significant wave height ${fWave(s.maxWaveFt / 3.281)}.` : ''} ${s.seas ? `${s.seas.height} ${s.seas.unit} seas extend up to ${Math.round(Math.max(...s.seas.radiiNm) * NM)} km from the centre.` : ''}</span></div>`);
+    const seasTxt = s.seas ? ` ${Math.round(s.seas.height)} ${s.seas.unit} seas extend ${H.esc(nmD(Math.max(...s.seas.radiiNm)))} from the centre.` : '';
+    if (m && coast?.coastal && coast.distKm <= 30) imp.push(`<div class="imp"><b>🌊 Waves (nearest sea)</b><span>Now ${fWave(m.now.hs)} (${seaState(m.now.hs)}), peak ${fWave(m.peak.hs)} ${H.dirName(m.peak.dir)} at ${when(m.peak.t)}, period ${Math.round(m.peak.per || 0)} s${m.now.sst != null ? ` · sea temp ${H.fT(m.now.sst)}` : ''}.${s.maxWaveFt ? ` Agency max wave near the centre: ${fWave(s.maxWaveFt / 3.281)}.` : ''}${seasTxt}</span></div>`);
+    else if (s.maxWaveFt || s.seas) imp.push(`<div class="imp"><b>🌊 Waves near the storm</b><span>${s.maxWaveFt ? `Max significant wave height ${fWave(s.maxWaveFt / 3.281)}.` : ''}${seasTxt}</span></div>`);
     $('#tcImpacts').innerHTML = imp.join('');
 
     // forecast table
     const rows = a.trk.map((p) => {
       const d = distKm(p.lat, p.lon, loc.lat, loc.lon);
-      return `<tr><td>${H.esc(H.fmtDay(p.t))} ${H.esc(H.fmtHM(p.t))}</td><td><span class="sdot" style="background:${ssColor(p.vmax)}"></span>${H.esc(ssCat(p.vmax)[1].replace('Category', 'Cat'))}</td><td>${p.vAgency != null ? kmh(p.vAgency) : '–'}</td><td>${p.gust ? kmh(p.gust * (s.windAvg === '10-min' ? 0.88 : 1)) : '–'}</td><td>${p.pressure ? p.pressure : '–'}</td><td>${Math.round(d).toLocaleString()} km ${H.dirName(bearing(loc.lat, loc.lon, p.lat, p.lon))}${p.note ? ` · ${H.esc(p.note)}` : ''}</td></tr>`;
+      return `<tr><td>${when(p.t)}</td><td><span class="sdot" style="background:${ssColor(p.vmax)}"></span>${H.esc(ssCat(p.vmax)[1].replace('Category', 'Cat'))}</td><td>${p.vAgency != null ? kmh(p.vAgency) : '–'}</td><td>${p.gust ? kmh(p.gust * (s.windAvg === '10-min' ? 0.88 : 1)) : '–'}</td><td>${p.pressure ? H.fPr(p.pressure) : '–'}</td><td>${H.esc(H.fD(d))} ${H.dirName(bearing(loc.lat, loc.lon, p.lat, p.lon))}${p.note ? ` · ${H.esc(p.note)}` : ''}</td></tr>`;
     }).join('');
-    $('#tcTable').innerHTML = `<thead><tr><th>Time (local)</th><th>Category</th><th>Wind</th><th>Gust</th><th>hPa</th><th>From you</th></tr></thead><tbody>${rows}</tbody>`;
+    $('#tcTable').innerHTML = `<thead><tr><th>Time (local)</th><th>Category</th><th>Wind</th><th>Gust</th><th>${H.esc(H.prU())}</th><th>From you</th></tr></thead><tbody>${rows}</tbody>`;
 
     // official text
     const off = [];
     if (s.headline) off.push(`<p class="tc-headline">${H.esc(s.headline)}</p>`);
     if (s.watchesWarnings) off.push(`<details open><summary>Watches & warnings (${H.esc(s.official?.code || s.source)})</summary><pre>${H.esc(s.watchesWarnings)}</pre></details>`);
-    if (s.hazards) off.push(`<details><summary>Hazards affecting land</summary><pre>${H.esc(s.hazards.replace(/Key messages.*?\n\s*\n/s, ''))}</pre></details>`);
+    if (s.hazards) off.push(`<details><summary>Hazards affecting land</summary><pre>${H.esc(String(s.hazards).replace(/Key messages.*?\n\s*\n/s, ''))}</pre></details>`);
     const alt = (s.alt || [])[0];
     if (s.summary || alt?.summary) off.push(`<details><summary>JTWC remarks</summary><p>${H.esc(s.summary || alt.summary)}</p></details>`);
-    if (s.source === 'JMA') off.push(`<details><summary>JMA analysis</summary><p>${H.esc([s.classText, s.scale ? s.scale + ' size' : null, s.gale?.length ? 'Gale area ' + s.gale.map((g) => `${g.dir} ${Math.round(g.nm * NM)} km`).join(', ') : null, s.storm?.length ? 'Storm area ' + s.storm.map((g) => `${g.dir} ${Math.round(g.nm * NM)} km`).join(', ') : null].filter(Boolean).join(' · '))}</p></details>`);
-    if (s.gdacs) off.push(`<details><summary>GDACS ${H.esc(s.gdacs.alertLevel || '')} alert</summary><p>${H.esc(s.gdacs.severity || '')}. Affected: ${H.esc((s.gdacs.countries || []).join(', ') || '—')}.</p><div class="gd-img">${Object.entries(s.gdacs.images || {}).filter(([k]) => /surge|rain/.test(k)).map(([k, u]) => `<a href="${H.esc(u)}" target="_blank" rel="noopener"><img loading="lazy" src="${H.esc(u)}" alt="${H.esc(k)}"><span>${k.includes('surge') ? 'Model storm surge (' + (k.split('_').pop()) + ')' : 'Rain forecast'}</span></a>`).join('')}</div>${s.gdacs.report ? `<p><a href="${H.esc(s.gdacs.report)}" target="_blank" rel="noopener">GDACS report</a></p>` : ''}</details>`);
+    if (s.source === 'JMA') off.push(`<details><summary>JMA analysis</summary><p>${H.esc([s.classText, s.scale ? s.scale + ' size' : null, s.gale?.length ? 'Gale area ' + s.gale.map((g) => `${g.dir} ${nmD(g.nm || 0)}`).join(', ') : null, s.storm?.length ? 'Storm area ' + s.storm.map((g) => `${g.dir} ${nmD(g.nm || 0)}`).join(', ') : null].filter(Boolean).join(' · '))}</p></details>`);
+    if (s.gdacs) {
+      const imgs = Object.entries(s.gdacs.images || {}).filter(([k, u]) => /surge|rain/.test(k) && H.safeUrl(u));
+      const rep = H.safeUrl(s.gdacs.report);
+      off.push(`<details><summary>GDACS ${H.esc(s.gdacs.alertLevel || '')} alert</summary><p>${H.esc(s.gdacs.severity || '')}. Affected: ${H.esc((s.gdacs.countries || []).join(', ') || '—')}.</p><div class="gd-img">${imgs.map(([k, u]) => `<a href="${H.esc(H.safeUrl(u))}" target="_blank" rel="noopener"><img loading="lazy" referrerpolicy="no-referrer" src="${H.esc(H.safeUrl(u))}" alt="${H.esc(k)}"><span>${k.includes('surge') ? 'Model storm surge (' + H.esc(k.split('_').pop()) + ')' : 'Rain forecast'}</span></a>`).join('')}</div>${rep ? `<p><a href="${H.esc(rep)}" target="_blank" rel="noopener">GDACS report</a></p>` : ''}</details>`);
+    }
     $('#tcOfficial').innerHTML = off.join('') || '<p class="muted">No text bulletin available from this agency.</p>';
 
-    const local = LOCAL[st.ctx.cc];
-    const links = [[s.official?.name, s.official?.url], local && [local[0] + ' (your national service)', local[1]], ...(s.links || []).map((l) => [l.label, l.url]), ...((s.alt || [])[0]?.links || []).map((l) => [l.label, l.url])].filter((l) => l && l[1]);
-    $('#tcLinks').innerHTML = links.map(([n, u]) => `<a class="chip" href="${H.esc(u)}" target="_blank" rel="noopener">${H.esc(n)} ↗</a>`).join('');
+    const local = localAgency(st.ctx.cc, loc);
+    const links = [[s.official?.name, s.official?.url], local && [local.name + ' (your national service)', local.url], ...(s.links || []).map((l) => [l?.label, l?.url]), ...((s.alt || [])[0]?.links || []).map((l) => [l?.label, l?.url])]
+      .filter((l) => l && l[0] && H.safeUrl(l[1]));
+    $('#tcLinks').innerHTML = links.map(([n, u]) => `<a class="chip" href="${H.esc(H.safeUrl(u))}" target="_blank" rel="noopener">${H.esc(n)} ↗</a>`).join('');
     const issued = s.advisoryIssued || s.issued || s.time;
     $('#tcMeta').textContent = `Data: ${s.official?.code === s.source ? s.official.name : `${s.source}${s.official ? ` · official centre ${s.official.name}` : ''}`} · advisory ${H.ago(Date.parse(issued))} · SkyPulse feed updated ${st.data?.generated ? H.ago(Date.parse(st.data.generated)) : '—'}. Local impacts are estimates from agency wind radii and forecast models; always follow official warnings.`;
-    drawMap(a);
   }
   function surgeOfficial(s) {
-    const m = (s.hazards || '').match(/STORM SURGE:\s*([\s\S]*?)(?:\n\s*\n|$)/);
+    const m = String(s.hazards || '').match(/STORM SURGE:\s*([\s\S]*?)(?:\n\s*\n|$)/);
     return m ? ` Official: “${H.esc(m[1].replace(/\s+/g, ' ').trim())}”` : '';
   }
   function rainOfficial(s) {
-    const m = (s.hazards || '').match(/RAINFALL:\s*([\s\S]*?)(?:\n\s*\n|$)/);
+    const m = String(s.hazards || '').match(/RAINFALL:\s*([\s\S]*?)(?:\n\s*\n|$)/);
     return m ? ` Official: “${H.esc(m[1].replace(/\s+/g, ' ').trim())}”` : '';
   }
-
   /* ------------------------------------------------------------------ map */
   function quadPolygon(lat, lon, r) {
     const pts = [];
     for (let b = 0; b <= 360; b += 6) { const q = r[Math.min(3, Math.floor((b % 360) / 90))]; if (q > 0) pts.push(dest(lat, lon, b, q * NM)); else pts.push([lat, lon]); }
     return pts;
   }
+  /** convex hull (Andrew's monotone chain) of [lat, lon] points */
   function hull(points) {
     const p = points.slice().sort((a, b) => a[1] - b[1] || a[0] - b[0]);
     const cross = (o, a, b) => (a[1] - o[1]) * (b[0] - o[0]) - (a[0] - o[0]) * (b[1] - o[1]);
@@ -580,60 +593,60 @@
     return rings;
   }
 
-  function drawMap(a) {
-    if (typeof L === 'undefined') { $('#tcMap').innerHTML = '<p class="muted" style="padding:16px">Map library failed to load.</p>'; return; }
-    if (!st.map) {
-      st.map = L.map('tcMap', { zoomControl: true, attributionControl: true, worldCopyJump: false, scrollWheelZoom: false, tap: true });
-      const esri = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/';
-      L.tileLayer(esri + 'World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', { maxZoom: 13, attribution: 'Tiles &copy; Esri — Esri, HERE, Garmin, &copy; OpenStreetMap contributors' }).addTo(st.map);
-      L.tileLayer(esri + 'World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}', { maxZoom: 13, pane: 'overlayPane', opacity: 0.85 }).addTo(st.map);
-      st.layers = L.layerGroup().addTo(st.map);
-    }
-    const s = a.s, loc = st.ctx.loc, g = st.layers; g.clearLayers();
-    const ref = a.cur.lon, uLon = unwrap(loc.lon, ref);
-    const fixRing = (ring) => ring.map(([la, lo]) => [la, unwrap(lo, ref)]);
-    // cone
-    let coneLabel = 'computed';
-    if (s.cone) { L.polygon(fixRing(s.cone), { color: '#ffffff', weight: 1, opacity: 0.6, fillColor: '#ffffff', fillOpacity: 0.12, dashArray: '4 4' }).addTo(g); coneLabel = s.official?.code || s.source; }
-    else if (s.imd?.cone) { s.imd.cone.forEach((r) => L.polygon(fixRing(r), { color: '#ffffff', weight: 1, opacity: 0.6, fillOpacity: 0.12, fillColor: '#fff', dashArray: '4 4' }).addTo(g)); coneLabel = 'IMD'; }
-    else if (a.trk.length > 1) L.polygon(computedCone(a.trk, s).map(fixRing), { stroke: false, fillColor: '#ffffff', fillOpacity: 0.11, fillRule: 'nonzero' }).addTo(g);
-    if (s.imd) [['r28', '#7fd3ff'], ['r34', '#ffe066'], ['r50', '#ff9f43'], ['r64', '#ff5d5d']].forEach(([k, c]) => (s.imd[k] || []).forEach((r) => L.polygon(fixRing(r), { color: c, weight: 1, fillColor: c, fillOpacity: 0.12 }).addTo(g)));
-    // current wind radii
-    [['34', '#ffe066'], ['50', '#ff9f43'], ['64', '#ff5d5d']].forEach(([k, c]) => {
-      const r = s.radii?.[k]; if (!r || !r.some((x) => x > 0)) return;
-      L.polygon(fixRing(quadPolygon(s.lat, s.lon, r)), { color: c, weight: 1.5, fillColor: c, fillOpacity: 0.16 }).addTo(g).bindPopup(`${k} kt winds (${Math.round(k * KT)} km/h+)`);
-    });
-    // JMA probability circles
-    (s.forecast || []).forEach((f) => { if (f.probRadiusNm) L.circle([f.lat, unwrap(f.lon, ref)], { radius: f.probRadiusNm * NM * 1000, color: '#ffffff', weight: 1, opacity: 0.35, fill: false, dashArray: '2 4' }).addTo(g); });
-    // past track
-    const past = (s.past || []).map((p) => [p.lat, unwrap(p.lon, ref)]);
-    const pastPath = past.length ? past : (s.pastPath || []).map(([la, lo]) => [la, unwrap(lo, ref)]);
-    if (pastPath.length) L.polyline(pastPath.concat([[a.trk[0].lat, a.trk[0].lon]]), { color: '#ffffff', weight: 2, opacity: 0.7 }).addTo(g);
-    // forecast track with intensity dots
-    L.polyline(a.trk.map((p) => [p.lat, p.lon]), { color: '#ffffff', weight: 2, dashArray: '6 6', opacity: 0.9 }).addTo(g);
-    a.trk.forEach((p, k) => {
-      L.circleMarker([p.lat, p.lon], { radius: k ? 6 : 9, color: '#0b1530', weight: 1.5, fillColor: ssColor(p.vmax), fillOpacity: 1 }).addTo(g)
-        .bindPopup(`<b>${H.esc(H.fmtDay(p.t))} ${H.esc(H.fmtHM(p.t))}</b><br>${H.esc(ssCat(p.vmax)[1])}<br>${p.vAgency != null ? H.fW(p.vAgency * KT) + ' ' + H.wU() : ''}${p.pressure ? ' · ' + p.pressure + ' hPa' : ''}`);
-    });
-    // you + closest approach
-    const you = L.circleMarker([loc.lat, uLon], { radius: 7, color: '#fff', weight: 2, fillColor: '#4fd18b', fillOpacity: 1 }).addTo(g).bindPopup('You are here');
-    if (a.series.length) L.polyline([[loc.lat, uLon], [a.cpa.lat, unwrap(a.cpa.lon, ref)]], { color: '#4fd18b', weight: 1.5, dashArray: '3 5' }).addTo(g).bindTooltip(`${Math.round(a.cpa.dKm)} km at closest approach`, { sticky: true });
-    $('#tcLegend').innerHTML = `<span><i style="background:#fff;opacity:.4"></i>Cone (${H.esc(coneLabel)})</span><span><i style="background:#ffe066"></i>34 kt</span><span><i style="background:#ff9f43"></i>50 kt</span><span><i style="background:#ff5d5d"></i>64 kt</span><span><i style="background:#4fd18b;border-radius:50%"></i>You</span>`;
-    const bounds = L.latLngBounds(a.trk.map((p) => [p.lat, p.lon]).concat(pastPath.slice(-6)).concat([[loc.lat, uLon]]));
-    const fit = () => { st.map.invalidateSize(); st.map.fitBounds(bounds.pad(0.15), { maxZoom: 7 }); };
-    if (st.mapKey !== s.key + loc.lat + loc.lon) { st.mapKey = s.key + loc.lat + loc.lon; setTimeout(fit, 60); }
-    void you;
+  /* --------------------------------------------- feed hygiene + caching */
+  // tropical.json is built from many agency feeds: coerce every field the maths or the markup relies on
+  const nz = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : typeof v === 'string' && v.trim() && Number.isFinite(+v) ? +v : null);
+  const ring = (r) => (Array.isArray(r) ? r.filter((p) => Array.isArray(p) && nz(p[0]) != null && nz(p[1]) != null).map((p) => [nz(p[0]), nz(p[1])]) : null);
+  const rings = (rs) => (Array.isArray(rs) ? rs.map(ring).filter((r) => r && r.length > 2) : undefined);
+  function radiiFix(r) {
+    const o = {}; if (!r || typeof r !== 'object') return o;
+    for (const k of ['34', '50', '64']) if (Array.isArray(r[k]) && r[k].length === 4) o[k] = r[k].map((x) => Math.max(0, nz(x) || 0));
+    return o;
   }
+  const areas = (list) => (Array.isArray(list) ? list.map((g) => ({ dir: typeof g?.dir === 'string' ? g.dir : 'All', nm: nz(g?.nm) })) : undefined);
+  const pt = (p) => ({ ...p, lat: nz(p?.lat), lon: nz(p?.lon), vmaxKt: nz(p?.vmaxKt), gustKt: nz(p?.gustKt), pressure: nz(p?.pressure), tau: nz(p?.tau), probRadiusNm: nz(p?.probRadiusNm), radii: radiiFix(p?.radii), gale: areas(p?.gale), storm: areas(p?.storm) });
+  function sanitize(s) {
+    const c = pt(s);
+    for (const k of ['moveDir', 'moveKt', 'eyeNm', 'maxWaveFt', 'advisory']) c[k] = nz(s[k]);
+    c.forecast = (Array.isArray(s.forecast) ? s.forecast : []).map(pt);
+    c.past = (Array.isArray(s.past) ? s.past : []).map(pt).filter((p) => p.lat != null && p.lon != null);
+    c.pastPath = ring(s.pastPath) || [];
+    c.cone = s.cone ? ring(s.cone) : null;
+    c.seas = s.seas && nz(s.seas.height) != null && Array.isArray(s.seas.radiiNm) ? { height: nz(s.seas.height), unit: s.seas.unit === 'm' ? 'm' : 'ft', radiiNm: s.seas.radiiNm.map((x) => nz(x) || 0) } : null;
+    c.alt = (Array.isArray(s.alt) ? s.alt : []).map((a) => ({ ...a, radii: radiiFix(a.radii), forecast: (Array.isArray(a.forecast) ? a.forecast : []).map(pt) }));
+    if (s.imd && typeof s.imd === 'object') c.imd = Object.fromEntries(['cone', 'r28', 'r34', 'r50', 'r64'].map((k) => [k, rings(s.imd[k])]).filter(([, v]) => v && v.length));
+    c.name = String(s.name || s.id || 'Unnamed');
+    c.key = String(s.key || `${s.basin}-${c.name}`);
+    c.links = Array.isArray(s.links) ? s.links : [];
+    return c;
+  }
+  // the coastline never moves: keep the probe result per spot on this device (12 most recent)
+  const coastCache = {
+    get(k) { try { return (JSON.parse(localStorage.getItem('skypulse.coast') || '{}')[k] || {}).c || null; } catch { return null; } },
+    set(k, c) {
+      try {
+        const all = JSON.parse(localStorage.getItem('skypulse.coast') || '{}'); all[k] = { at: Date.now(), c };
+        const keep = Object.entries(all).sort((a, b) => b[1].at - a[1].at).slice(0, 12);
+        localStorage.setItem('skypulse.coast', JSON.stringify(Object.fromEntries(keep)));
+      } catch { /* storage unavailable */ }
+    },
+  };
 
   /* --------------------------------------------------------------- update */
   async function update(ctx) {
     st.ctx = ctx;
     const now = Date.now(), loc = ctx.loc, jobs = [];
-    if (!st.data || now - st.dataAt > 5 * 60e3) jobs.push(H.getJSON('data/tropical.json?t=' + Math.floor(now / 300e3), 12000).then((d) => { st.data = d; st.dataAt = now; st.dataErr = null; }).catch((e) => { st.dataErr = e.message; }));
+    if (!st.data || now - st.dataAt > 5 * 60e3) jobs.push(H.getJSON('data/tropical.json?t=' + Math.floor(now / 300e3), 12000).then((d) => {
+      st.data = { ...d, storms: (Array.isArray(d?.storms) ? d.storms : []).map((s) => { try { return sanitize(s); } catch { return null; } }).filter(Boolean), india: { alerts: Array.isArray(d?.india?.alerts) ? d.india.alerts : [] } };
+      st.dataAt = now; st.dataErr = null;
+    }).catch((e) => { st.dataErr = e.message; }));
     const ck = `${loc.lat.toFixed(3)},${loc.lon.toFixed(3)}`;
-    if (st.coastKey !== ck) { st.coastKey = ck; st.coast = null; st.marine = null; st.userSel = false; jobs.push(coastProbe(loc.lat, loc.lon).then((c) => { st.coast = c; }).catch(() => { st.coast = null; })); }
+    if (st.coastKey !== ck) {
+      st.coastKey = ck; st.marine = null; st.coast = coastCache.get(ck);
+      if (!st.coast) jobs.push(coastProbe(loc.lat, loc.lon).then((c) => { st.coast = c; coastCache.set(ck, c); }).catch(() => { st.coast = null; }));
+    }
     const usLike = ['US', 'PR', 'GU', 'VI', 'AS', 'MP'].includes(ctx.cc) || (!ctx.cc && loc.lat > 17 && loc.lat < 72 && loc.lon < -64 && loc.lon > -180);
-    if (usLike && (st.nwsKey !== ck || now - st.nwsAt > 5 * 60e3)) jobs.push(H.getJSON(`https://api.weather.gov/alerts/active?point=${loc.lat.toFixed(4)},${loc.lon.toFixed(4)}`, 10000).then((d) => { st.nws = d; st.nwsAt = now; st.nwsKey = ck; }).catch(() => { st.nws = null; }));
+    if (usLike && (st.nwsKey !== ck || now - st.nwsAt > 5 * 60e3)) jobs.push(H.getJSON(`https://api.weather.gov/alerts/active?point=${loc.lat.toFixed(3)},${loc.lon.toFixed(3)}`, 10000).then((d) => { st.nws = d; st.nwsAt = now; st.nwsKey = ck; }).catch(() => { st.nws = null; }));
     else if (!usLike) st.nws = null;
     if (ctx.cc === 'HK' && now - st.hkoAt > 5 * 60e3) jobs.push(H.getJSON('https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=warnsum&lang=en', 10000).then((d) => { st.hko = d; st.hkoAt = now; }).catch(() => { st.hko = null; }));
     await Promise.all(jobs);
@@ -647,8 +660,6 @@
       .sort((x, y) => ({ direct: 0, near: 1, watch: 2, far: 3 }[x.level] - { direct: 0, near: 1, watch: 2, far: 3 }[y.level]) || x.cpa.dKm - y.cpa.dKm);
     const threat = analyses.find((a) => a.level !== 'far') || null;
     st.last = { analyses, threat };
-    if (!st.userSel || !analyses.some((a) => a.s.key === st.sel)) st.sel = threat?.s.key || null;
-    const shown = analyses.find((a) => a.s.key === st.sel) || null;
 
     const warnings = [
       ...nwsWarnings(st.nws), ...(ctx.cc === 'IN' ? indiaWarnings(ctx) : []), ...hkoWarnings(st.hko), ...gdacsWarnings(ctx, threat),
@@ -656,9 +667,7 @@
     ].filter((w) => !(w.source === 'official' && w.end && w.end < now))
      .sort((x, y) => (LV[y.level] - LV[x.level]) || ((x.source.startsWith('official') ? 0 : 1) - (y.source.startsWith('official') ? 0 : 1)));
     renderWarnings(warnings);
-    renderStorm(shown);
-    $('#stormList').innerHTML = analyses.length ? analyses.map(stormRow).join('') : `<li class="muted" style="padding:8px 2px">${st.data ? 'No active tropical cyclones worldwide right now.' : st.dataErr ? 'Tropical-cyclone feed unavailable (' + H.esc(st.dataErr) + ').' : 'Loading…'}</li>`;
-    $('#stormListNote').textContent = st.data?.generated ? `${analyses.length} active · feed ${H.ago(Date.parse(st.data.generated))}` : '';
+    if (window.Storms) window.Storms.update({ data: st.data, dataErr: st.dataErr, analyses, threat, loc });
 
     const nowState = threat ? threat.series[0] : null;
     return {
@@ -670,19 +679,19 @@
     };
   }
 
-  function init(helpers) {
-    H = helpers;
-    document.addEventListener('click', (e) => {
-      const b = e.target.closest('.storm-row'); if (!b) return;
-      st.sel = b.dataset.key; st.userSel = true;
-      const a = st.last?.analyses.find((x) => x.s.key === st.sel);
-      renderStorm(a);
-      document.querySelectorAll('.storm-row').forEach((r) => r.classList.toggle('sel', r.dataset.key === st.sel));
-      $('#tcCard')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
+  /** the user's national weather service (official local warnings), by country code */
+  function localAgency(cc, loc) {
+    if (!cc) return null;
+    if (cc === 'US' && loc && Number.isFinite(loc.lat)) return { name: 'National Weather Service', url: `https://forecast.weather.gov/MapClick.php?lat=${loc.lat.toFixed(3)}&lon=${loc.lon.toFixed(3)}` };
+    if (LOCAL[cc]) return { name: LOCAL[cc][0], url: LOCAL[cc][1] };
+    if (METEOALARM.has(cc)) return { name: 'MeteoAlarm (European weather warnings)', url: 'https://meteoalarm.org/' };
+    return null;
   }
-  function refreshMap() { if (st.map) setTimeout(() => { st.map.invalidateSize(); }, 50); }
-  function rerender() { if (st.last && st.ctx) { renderStorm(st.last.analyses.find((a) => a.s.key === st.sel)); } }
 
-  window.Hazards = { init, update, refreshMap, rerender };
+  function init(helpers) { H = helpers; }
+
+  window.Hazards = {
+    init, update, renderDetail, localAgency,
+    lib: { track, stateAt, ssCat, ssColor, SS, quadPolygon, computedCone, unwrap, distKm, bearing, dest, KT, NM, CONE_NM },
+  };
 })();

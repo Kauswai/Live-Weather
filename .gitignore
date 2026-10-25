@@ -1,2 +1,5 @@
 LiveWeather/data/
 __pycache__/
+smoke-out/
+tests/node_modules/
+tests/package-lock.json
