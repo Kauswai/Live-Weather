@@ -227,11 +227,26 @@
     return `<span class="t-trend ${cls}">${arrow} ${signed(diff, digits)}${unitTxt}</span>`;
   };
 
+  // one section failing to draw must not take the page down with it: log it, keep going
+  const failed = new Set();
+  function safely(name, fn) {
+    try { return fn(); } catch (e) {
+      console.error(`SkyPulse: ${name} failed`, e);
+      if (!failed.has(name + e.message)) { failed.add(name + e.message); feed('err', '⚠️', `Couldn't draw the ${name} (${e.message}). The rest of the page still works.`); }
+      return undefined;
+    }
+  }
+  const NO_PULSE = { level: 0, tone: 'clear', levelName: '–', verdict: 'Advisor unavailable', detail: '', icon: 'closed', topKey: 'none', notes: [], gear: [], factors: [], advisories: [], moreWarnings: 0, threat: null,
+    rain: { level: 0, maxP: 0, sum: 0, idx: [], firstRain: null, rainingNow: false, clearsAt: null } };
+  const updatePulse = () => { S.pulse = safely('Pulse Advisor', computePulse) || S.pulse || NO_PULSE; };
+
   function renderAll() {
     if (!S.t) return;
-    applyFx();
-    S.pulse = computePulse();
-    renderHero(); renderSun(); renderPulse(); renderTiles(); updateSunTracker(); renderQ15(); renderChart(); renderHourly(); renderDaily(); renderPast(); renderStatus();
+    safely('weather effects', applyFx);
+    updatePulse();
+    [['current conditions', renderHero], ['sun times', renderSun], ['Pulse Advisor', renderPulse], ['detail tiles', renderTiles], ['sun tracker', updateSunTracker],
+      ['15-minute outlook', renderQ15], ['chart', renderChart], ['hourly forecast', renderHourly], ['8-day forecast', renderDaily], ['look-back', renderPast], ['status line', renderStatus]]
+      .forEach(([name, fn]) => safely(name, fn));
   }
 
   function renderHero() {
@@ -1135,9 +1150,11 @@
     if (reason !== 'manual' && cacheTTL() && hasCache()) {
       const hit = WxCache.get(loc.lat, loc.lon, { kind: mode });
       if (hit && Date.now() < nextRefreshAt(hit.at)) {
-        if (hit.place && !(loc.name && loc.cc)) Object.assign(loc, hit.place);
-        applyData(hit.fc, hit.aq, { at: hit.at, source: 'cache', reason, token });
-        return;
+        try {
+          if (hit.place && !(loc.name && loc.cc)) Object.assign(loc, hit.place);
+          applyData(hit.fc, hit.aq, { at: hit.at, source: 'cache', reason, token });
+          return;
+        } catch (e) { console.error('SkyPulse: saved copy unusable, fetching instead', e); } // fall through to the network
       }
     }
     S.fetching = true; $('#refreshBtn').classList.add('spin');
@@ -1163,6 +1180,7 @@
       }
       feed('err', '⚠️', `Update failed (${e.message}). Retrying in 1 minute.`);
       if (!S.t) gateFail('Could not load weather data', `${e.message}. Check your connection and try again.`);
+      else window.SkyGuard?.report('Error', e.message, e.stack);   // data arrived but couldn't be shown (only acts during start-up)
     } finally {
       if (token === S.fetchToken) { S.fetching = false; $('#refreshBtn').classList.remove('spin'); tick(); }
     }
@@ -1198,17 +1216,20 @@
       if (token !== S.fetchToken) return;
       S.hz = hz;
     } catch (e) { console.warn('hazards', e); return; }
-    applyFx();
-    S.pulse = computePulse(); renderPulse(); renderHero();
-    const w = S.hz.warnings.filter((x) => LVN[x.level] >= 1);
+    safely('weather effects', applyFx);
+    updatePulse(); safely('Pulse Advisor', renderPulse); safely('current conditions', renderHero);
+    safely('alerts', () => hazardFeed(S.hz));
+  }
+  function hazardFeed(hz) {
+    const w = hz.warnings.filter((x) => LVN[x.level] >= 1);
     const badge = $('#alertBadge');
     badge.hidden = !w.length; badge.textContent = w.length;
     badge.classList.toggle('amber', !w.some((x) => LVN[x.level] >= 2));
-    $('#stormBadge').hidden = !S.hz.threat;
-    S.hz.warnings.forEach((x) => {
+    $('#stormBadge').hidden = !hz.threat;
+    hz.warnings.forEach((x) => {
       if (LVN[x.level] >= 2 || x.source === 'official') once('w-' + x.id + x.level, () => feed(LVN[x.level] >= 2 ? 'warn' : 'alert', x.icon || '⚠️', `${x.source === 'official' ? 'Official' : 'Forecast'} ${x.level} warning — ${x.title}. ${x.text}`));
     });
-    const th = S.hz.threat;
+    const th = hz.threat;
     if (th) once(`tc-${th.s.key}-${th.level}`, () => feed('warn', '🌀', () => `${th.s.classText || 'Tropical cyclone'} ${th.s.name}: ${th.level === 'direct' ? 'direct threat' : th.level === 'near' ? 'close pass' : 'approaching'} — now ${fD(th.dNow)} away; closest approach ${fD(th.cpa.dKm)} at ${fmtDay(th.cpa.t)} ${fmtHM(th.cpa.t)}.`));
     feedPulse(S.pulse);
   }
@@ -1286,8 +1307,11 @@
       return;
     }
     const km = haversine(S.loc, next);
-    if (km >= MOVE_KM) setLocation(next, `You moved ${km.toFixed(1)} km — refreshing forecast for your new position`);
-    else { S.loc.acc = acc; renderStatus(); }
+    // coarse fixes (Wi-Fi/IP positioning on PCs) wander by kilometres: only a shift bigger than the fix's own accuracy counts
+    if (km >= Math.max(MOVE_KM, (acc || 0) / 1000)) {
+      const refined = acc < (S.loc.acc || Infinity) / 3;
+      setLocation(next, refined ? `Location refined to ±${acc < 1000 ? Math.round(acc) + ' m' : (acc / 1000).toFixed(1) + ' km'} — refreshing the forecast` : `You moved ${km.toFixed(1)} km — refreshing forecast for your new position`);
+    } else { S.loc.acc = acc; renderStatus(); }
   }
   function onPosErr(e) {
     const msg = e.code === 1 ? 'Location permission was denied.' : e.code === 3 ? 'Timed out while getting your location.' : 'Your location is currently unavailable.';
@@ -1309,7 +1333,7 @@
 
   /* ---------------- gate & toast ---------------- */
   let gateTimer;
-  const openGate = () => { clearTimeout(gateTimer); $('#gate').hidden = false; $('#gate').classList.remove('hide'); };
+  const openGate = () => { clearTimeout(gateTimer); $('#gate').hidden = false; $('#gate').classList.remove('hide'); $('#gateErr').hidden = true; $('#gateErrActions').hidden = true; };
   function showGate(title, msg) {
     openGate(); $('#gateTitle').textContent = title; $('#gateMsg').textContent = msg;
     $('#gateSpinner').classList.remove('off'); $('#gateActions').hidden = true;

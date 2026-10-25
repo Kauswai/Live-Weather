@@ -17,7 +17,7 @@
   <link rel="apple-touch-icon" href="icons/icon-180.png" />
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="vendor/leaflet/leaflet.css" />
-  <link rel="stylesheet" href="styles.css?v=12" />
+  <link rel="stylesheet" href="styles.css?v=13" />
 </head>
 <body class="scene-clear-day">
   <div class="sky" aria-hidden="true"></div>
@@ -320,6 +320,11 @@
         <button class="btn" id="gateRetry">Try GPS again</button>
         <button class="btn ghost" id="gateSearch">Search a city instead</button>
       </div>
+      <div class="gate-actions" id="gateErrActions" hidden>
+        <button class="btn" id="gateReload">Reload</button>
+        <button class="btn ghost" id="gateReset">Clear saved data &amp; reload</button>
+      </div>
+      <pre class="gate-err" id="gateErr" hidden></pre>
     </div>
   </div>
 
@@ -337,16 +342,17 @@
 
   <div class="toast" id="toast" role="status" hidden></div>
 
+  <script src="guard.js?v=13"></script>
   <script src="vendor/chartjs/chart.umd.js"></script>
   <script src="vendor/leaflet/leaflet.js"></script>
-  <script src="icons.js?v=12"></script>
-  <script src="settings.js?v=12"></script>
-  <script src="cache.js?v=12"></script>
-  <script src="fx.js?v=12"></script>
-  <script src="sun.js?v=12"></script>
-  <script src="pulse.js?v=12"></script>
-  <script src="hazards.js?v=12"></script>
-  <script src="storms.js?v=12"></script>
-  <script src="app.js?v=12"></script>
+  <script src="icons.js?v=13"></script>
+  <script src="settings.js?v=13"></script>
+  <script src="cache.js?v=13"></script>
+  <script src="fx.js?v=13"></script>
+  <script src="sun.js?v=13"></script>
+  <script src="pulse.js?v=13"></script>
+  <script src="hazards.js?v=13"></script>
+  <script src="storms.js?v=13"></script>
+  <script src="app.js?v=13"></script>
 </body>
 </html>

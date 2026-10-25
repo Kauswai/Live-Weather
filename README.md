@@ -42,6 +42,7 @@ Live-Weather/
 │   ├── index.html            page structure (sections tagged per phone tab)
 │   ├── styles.css            theme, weather-reactive backgrounds, themes/density, desktop grid + phone app shell
 │   ├── app.js                location, forecast refresh + cache, charts, 15-min outlook, live feed, tabs/gestures/PWA
+│   ├── guard.js              start-up guard: shows any launch error on screen instead of a stuck spinner
 │   ├── settings.js           preferences, appearance, section layout engine, settings sheet
 │   ├── cache.js              on-device weather cache (localStorage, up to 8 places)
 │   ├── pulse.js              Pulse Advisor decision logic (pure)

@@ -8,6 +8,7 @@ A static site: plain HTML, CSS and JavaScript, with no build step. Chart.js, Lea
 | `index.html` | Page skeleton and Content-Security-Policy. Holds the top bar (search, GPS, install, units, settings) and every section, each tagged `data-sec` and `data-tab`: <ul><li>hero, Pulse Advisor, warnings, tiles;</li><li>15-minute outlook, chart, live feed, hourly, daily, look-back;</li><li>cyclone tracker, sun tracker.</li></ul> Also the bottom tab bar, the location gate and the settings sheet. |
 | `styles.css` | Self-hosted Inter, theme tokens, scene palettes (`body.scene-*`, incl. `scene-cyclone`) and themes (`body.theme-*`, `density-compact`), the 12-column desktop grid (packed by `settings.js`), and the phone app shell at ≤ 760 px. |
 | `app.js` | Location, forecast refresh with the on-device cache, units and clock, tiles, chart, 15-minute outlook, Pulse card, feed, sun tracker, scene/effect selection, tabs, gestures and PWA (one IIFE). |
+| `guard.js` | Loaded first. If anything throws before the first forecast is on screen, the location gate shows the error and its details, with *Reload* and *Clear saved data & reload*, instead of an endless spinner. |
 | `settings.js` | `Prefs`: one validated preferences object, the look, and the settings sheet. `Layout`: packs the visible sections into the grid in the user's order, and hides empty tabs. |
 | `cache.js` | `WxCache`: the last forecast, air quality and place name for up to 8 places, kept in `localStorage`. |
 | `pulse.js` | `Pulse.compute()`: the Pulse Advisor decision logic. A pure function, unit-tested in `../tests/pulse.test.mjs`. |
@@ -24,11 +25,12 @@ A static site: plain HTML, CSS and JavaScript, with no build step. Chart.js, Lea
 
 ### Location
 1. `navigator.geolocation.watchPosition` (high accuracy) starts on load.
-2. The first fix loads data. Later fixes only update the accuracy badge, unless you have moved at least `MOVE_KM` (1.5 km). A move triggers a full refetch and a feed entry.
-3. If permission is denied or there is no fix:
+2. The first fix loads data. Later fixes only update the accuracy badge, unless the position shifted by at least `MOVE_KM` (1.5 km) **and** by more than the new fix's own accuracy. Coarse Wi-Fi/IP positioning on PCs jumps between fixes kilometres apart, and that no longer counts as moving; a much more precise fix is logged as "location refined". A move triggers a full refetch and a feed entry.
+3. Every section is drawn inside `safely()`: if one throws, the feed reports it and the rest of the page still loads.
+4. If permission is denied or there is no fix:
    - it uses the last place saved in `localStorage` (`skypulse.lastLoc`);
    - otherwise it shows a gate offering a GPS retry or city search.
-4. Choosing a searched city switches to manual mode. The **Live GPS** button resumes tracking.
+5. Choosing a searched city switches to manual mode. The **Live GPS** button resumes tracking.
 
 ### Data
 Three requests run in parallel on every network refresh. Air quality and reverse geocoding are optional, so their failures are ignored. Coordinates sent to any third party are rounded to 3 decimals (~110 m).

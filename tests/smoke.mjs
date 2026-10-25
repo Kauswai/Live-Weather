@@ -185,6 +185,49 @@ if (!ONLY || ONLY === 'interact') {
     await ctx.close();
   }
 }
+
+// ------------------------------------------------------------------ resilience
+if (!ONLY || ONLY === 'resilience') {
+  const sc = SCENARIOS[1];
+  const ready = (page) => page.waitForFunction(() => document.querySelector('#app')?.getAttribute('aria-busy') === 'false', null, { timeout: 15000 }).then(() => true, () => false);
+  // one section throwing must not stop the page from loading
+  {
+    console.log('▶ a section fails to draw');
+    const { ctx, page } = await newPage(browser, sc, 'desktop', {});
+    await ctx.addInitScript(() => { let wx; Object.defineProperty(window, 'WX', { configurable: true, get: () => wx, set: (v) => { v.pulseSVG = () => { throw new Error('injected'); }; wx = v; } }); });
+    await page.goto(BASE);
+    if (!(await ready(page))) fail('page did not load when one section threw');
+    if (!(await page.waitForFunction(() => document.querySelector('#gate').hidden, null, { timeout: 3000 }).then(() => true, () => false))) fail('location gate still covers the page');
+    if (!/Couldn't draw the Pulse Advisor/.test(await page.locator('#feed').textContent())) fail('section failure not reported in the feed');
+    await ctx.close();
+  }
+  // a start-up crash shows the error instead of an endless spinner
+  {
+    console.log('▶ start-up crash is reported on screen');
+    const { ctx, page } = await newPage(browser, sc, 'desktop', {});
+    await ctx.route(/\/app\.js/, async (r) => { const res = await r.fetch(); r.fulfill({ response: res, body: (await res.text()).replace("'use strict';", "'use strict'; throw new Error('injected start-up failure');") }); });
+    await page.goto(BASE); await page.waitForTimeout(1500);
+    if (!/problem while starting/.test(await page.locator('#gateTitle').textContent())) fail('start-up crash not shown');
+    if (!/injected start-up failure/.test(await page.locator('#gateErr').textContent())) fail('start-up error details missing');
+    await ctx.close();
+  }
+  // coarse PC positioning flipping between two fixes inside its accuracy must not count as moving
+  {
+    console.log('▶ jittery desktop location');
+    const hits = {}; const place = F.PLACES[sc.place];
+    const { ctx, page, problems } = await newPage(browser, sc, 'desktop', hits);
+    await ctx.setGeolocation({ latitude: place.lat, longitude: place.lon, accuracy: 20000 });
+    await page.goto(BASE);
+    await ready(page);
+    for (let k = 0; k < 30; k++) { await ctx.setGeolocation({ latitude: place.lat + (k % 2) * 0.055, longitude: place.lon, accuracy: 20000 }); await page.waitForTimeout(100); }
+    const moves = await page.locator('#feed li', { hasText: 'You moved' }).count();
+    if (moves) fail(`location jitter counted as ${moves} move(s)`);
+    await ctx.setGeolocation({ latitude: place.lat + 0.2, longitude: place.lon, accuracy: 30 }); await page.waitForTimeout(800);
+    if (!(await page.locator('#feed li', { hasText: /moved|refined/ }).count())) fail('a precise fix 22 km away was ignored');
+    problems.forEach(fail);
+    await ctx.close();
+  }
+}
 await browser.close();
 server.kill();
 console.log(failures ? `\n${failures} problem(s)` : '\nall clear');
