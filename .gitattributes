@@ -1,2 +1,4 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+# third-party files are kept byte-for-byte as published; keep them out of diffs and language stats
+LiveWeather/vendor/** -diff linguist-vendored
