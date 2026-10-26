@@ -51,6 +51,10 @@ function series(name, shape, h, lh, place) {
     case 'uv_index': return lh > 6 && lh < 18 ? +(8 * Math.sin(((lh - 6) / 12) * Math.PI)).toFixed(1) : 0;
     case 'is_day': return lh >= 7 && lh < 19 ? 1 : 0;
     case 'lightning_potential': return 0;
+    case 'relative_humidity_850hPa': return Math.round(Math.min(100, shape.rh(h) - 5));
+    case 'relative_humidity_700hPa': return Math.round(shape.rh(h) * 0.7);
+    case 'relative_humidity_500hPa': return Math.round(shape === SHAPES.calm ? 22 : shape.rh(h) * 0.6);
+    case 'relative_humidity_300hPa': return Math.round(shape === SHAPES.calm ? 18 : shape.rh(h) * 0.5);
     default: return 0;
   }
 }
@@ -112,7 +116,8 @@ export function forecast(url, scenario, place, now = Date.now()) {
   return out;
 }
 
-export const airQuality = (scenario) => ({ current: { time: Math.floor(Date.now() / 1000), us_aqi: scenario === 'heat' ? 178 : 42, pm2_5: scenario === 'heat' ? 96 : 8.4, pm10: 20 } });
+export const airQuality = (scenario) => ({ current: { time: Math.floor(Date.now() / 1000), us_aqi: scenario === 'heat' ? 178 : 42, pm2_5: scenario === 'heat' ? 96 : 8.4, pm10: 20,
+  aerosol_optical_depth: scenario === 'heat' ? 0.72 : scenario === 'calm' ? 0.07 : 0.24, dust: scenario === 'heat' ? 95 : 3 } });
 
 export const reverse = (place) => ({
   city: place.city, locality: place.city, principalSubdivision: place.sub, countryName: place.country, countryCode: place.cc,
@@ -195,9 +200,15 @@ export function tropical(scenario) {
     basinName: 'Southern Hemisphere (South Pacific)', official: { code: 'FMS', name: 'Fiji Meteorological Service (RSMC Nadi)', url: 'https://www.met.gov.fj/', dataFrom: 'JTWC' }, key: 'SH-ZELIA', alt: [],
     gdacs: { eventId: 1001, alertLevel: 'Orange', severity: 'Tropical Cyclone (maximum wind speed of 120 km/h)', countries: ['Fiji', 'Tonga'], report: 'javascript:alert(2)', images: { rainmap: 'https://www.gdacs.org/x.png' } },
   };
+  const ep = trackPts(t0, 14.5, -118.0, 0.4, -1.1, 145, -8, 7, 12);
+  const lane = { source: 'NHC', id: 'ep182026', name: 'Lane', basin: 'EP', classCode: 'HU', classText: 'Hurricane', time: ep[0].time, lat: ep[0].lat, lon: ep[0].lon, vmaxKt: 145, gustKt: 175, pressure: 922,
+    moveDir: 290, moveKt: 9, windAvg: '1-min', radii: ep[0].radii, forecast: ep.slice(1), basinName: 'Eastern North Pacific', official: { code: 'NHC', name: 'NOAA National Hurricane Center (RSMC Miami)', url: 'https://www.nhc.noaa.gov/', dataFrom: 'NHC' }, key: 'EP-LANE', alt: [] };
+  const io = trackPts(t0, 15.5, 88.0, 0.5, -0.4, 70, 2, 6, 12);
+  const dana = { source: 'JTWC', id: 'io052026', name: 'Dana', basin: 'IO', subBasin: 'B', classText: 'Very Severe Cyclonic Storm', time: io[0].time, lat: io[0].lat, lon: io[0].lon, vmaxKt: 70, gustKt: 85, pressure: 970,
+    moveDir: 330, moveKt: 8, windAvg: '1-min', radii: io[0].radii, forecast: io.slice(1), basinName: 'North Indian Ocean (Bay of Bengal)', official: { code: 'IMD', name: 'India Meteorological Department (RSMC New Delhi)', url: 'https://rsmcnewdelhi.imd.gov.in/', dataFrom: 'JTWC' }, key: 'IO-DANA', alt: [] };
   return {
     generated: iso(now - 12 * 60e3), status: { NHC: { ok: true }, JMA: { ok: true }, JTWC: { ok: true } },
-    storms: [kirk, kong, zelia], gdacs: [],
+    storms: [kirk, kong, zelia, lane, dana], gdacs: [],
     india: { source: 'NDMA SACHET (CAP)', alerts: scenario === 'heat' ? [{ id: 'in1', sender: 'IMD New Delhi', event: 'Heat Wave', severity: 'Severe', onset: iso(now - HOUR), expires: iso(now + DAY), headline: 'Severe heat wave over Delhi', description: 'Heat wave conditions very likely.', instruction: 'Avoid sun exposure.', area: 'New Delhi, Delhi', issuer: 'IMD' }] : [] },
   };
 }

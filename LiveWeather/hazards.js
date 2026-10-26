@@ -16,7 +16,7 @@
   const RAD = Math.PI / 180;
   let H = null;                    // helpers injected by app.js
   const st = { data: null, dataAt: 0, dataErr: null, coast: null, coastKey: null, marine: null, marineAt: 0, marineKey: null,
-               nws: null, nwsAt: 0, nwsKey: null, hko: null, hkoAt: 0, last: null, ctx: null };
+               nws: null, nwsAt: 0, nwsKey: null, hko: null, hkoAt: 0, last: null, ctx: null, seq: 0 };
 
   /* ------------------------------------------------------------ geodesy */
   function distKm(a, b, c, d) {
@@ -56,10 +56,16 @@
   }
 
   /* ---------------------------------------------------- intensity scales */
-  const SS = [[137, 'Category 5', '#ff6060'], [113, 'Category 4', '#ff8f20'], [96, 'Category 3', '#ffc140'], [83, 'Category 2', '#ffe775'],
-              [64, 'Category 1', '#ffffcc'], [34, 'Tropical storm', '#00faf4'], [0, 'Tropical depression', '#5ebaff']];
+  // Saffir–Simpson on 1-min winds (kt): Cat 1 yellow, 2 darker yellow, 3 orange, 4 red, 5 purple
+  const SS = [[137, 'Category 5', '#a14ff0'], [113, 'Category 4', '#e5322d'], [96, 'Category 3', '#ff8a1f'], [83, 'Category 2', '#e8b600'],
+              [64, 'Category 1', '#ffe14d'], [34, 'Tropical storm', '#00faf4'], [0, 'Tropical depression', '#5ebaff']];
   const ssCat = (kt1) => SS.find(([v]) => (kt1 ?? 0) >= v);
   const ssColor = (kt1) => ssCat(kt1)[2];
+  const catNum = (kt1) => [64, 83, 96, 113, 137].filter((v) => (kt1 ?? 0) >= v).length;   // 0 below hurricane force
+  /** readable text on a category colour */
+  const ssInk = (kt1) => ((kt1 ?? 0) >= 113 ? '#ffffff' : '#0c1a3a');
+  /** spinning symbol for a storm: numbered for Cat 1 and above */
+  const stormIcon = (kt1, south, size) => WX.stormGlyph(ssColor(kt1), south, size, catNum(kt1), ssInk(kt1));
   function localScales(s, kt1) {
     const out = [];
     const v10 = kt1 * 0.88, v3 = kt1 * 0.95;
@@ -486,7 +492,7 @@
     const kmh = (kt) => `${H.fW(kt * KT)} ${H.wU()}`;
     const nmD = (nm) => H.fD(nm * NM);
     const when = (t) => `${H.esc(H.fmtDay(t))} ${H.esc(H.fmtHM(t))}`;
-    $('#tcTitle').innerHTML = `<span class="tc-badge" style="background:${cat[2]}">${H.esc(cat[1])}</span> ${H.esc(s.classText || 'Tropical cyclone')} <b>${H.esc(s.name)}</b>`;
+    $('#tcTitle').innerHTML = `<span class="storm-ico mini">${stormIcon(kt1, a.south, 30)}</span><span class="tc-badge" style="background:${cat[2]};color:${ssInk(kt1)}">${H.esc(cat[1])}</span> ${H.esc(s.classText || 'Tropical cyclone')} <b>${H.esc(s.name)}</b>`;
     $('#tcThreat').className = 'tc-threat t-' + a.level;
     const head = a.level === 'direct'
       ? (a.hu ? `Hurricane/typhoon-force winds possible here ${H.fmtDay(a.hu.start)} ${H.fmtHM(a.hu.start)} – ${H.fmtDay(a.hu.end)} ${H.fmtHM(a.hu.end)}.` : a.ts ? `Gale-force (≥ ${kmh(34)}) winds expected here ${H.fmtDay(a.ts.start)} ${H.fmtHM(a.ts.start)} – ${H.fmtDay(a.ts.end)} ${H.fmtHM(a.ts.end)}.` : 'The centre is forecast to pass very close.')
@@ -634,6 +640,8 @@
 
   /* --------------------------------------------------------------- update */
   async function update(ctx) {
+    // a location change can start a new update while the last one still waits on the network: only the newest renders
+    const seq = ++st.seq;
     st.ctx = ctx;
     const now = Date.now(), loc = ctx.loc, jobs = [];
     if (!st.data || now - st.dataAt > 5 * 60e3) jobs.push(H.getJSON('data/tropical.json?t=' + Math.floor(now / 300e3), 12000).then((d) => {
@@ -643,17 +651,19 @@
     const ck = `${loc.lat.toFixed(3)},${loc.lon.toFixed(3)}`;
     if (st.coastKey !== ck) {
       st.coastKey = ck; st.marine = null; st.coast = coastCache.get(ck);
-      if (!st.coast) jobs.push(coastProbe(loc.lat, loc.lon).then((c) => { st.coast = c; coastCache.set(ck, c); }).catch(() => { st.coast = null; }));
+      if (!st.coast) jobs.push(coastProbe(loc.lat, loc.lon).then((c) => { coastCache.set(ck, c); if (st.coastKey === ck) st.coast = c; }).catch(() => { if (st.coastKey === ck) st.coast = null; }));
     }
     const usLike = ['US', 'PR', 'GU', 'VI', 'AS', 'MP'].includes(ctx.cc) || (!ctx.cc && loc.lat > 17 && loc.lat < 72 && loc.lon < -64 && loc.lon > -180);
     if (usLike && (st.nwsKey !== ck || now - st.nwsAt > 5 * 60e3)) jobs.push(H.getJSON(`https://api.weather.gov/alerts/active?point=${loc.lat.toFixed(3)},${loc.lon.toFixed(3)}`, 10000).then((d) => { st.nws = d; st.nwsAt = now; st.nwsKey = ck; }).catch(() => { st.nws = null; }));
     else if (!usLike) st.nws = null;
     if (ctx.cc === 'HK' && now - st.hkoAt > 5 * 60e3) jobs.push(H.getJSON('https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=warnsum&lang=en', 10000).then((d) => { st.hko = d; st.hkoAt = now; }).catch(() => { st.hko = null; }));
     await Promise.all(jobs);
+    if (seq !== st.seq) return null;
     ctx.coast = st.coast;
     if (st.coast?.coastal && st.coast.distKm <= 30 && (st.marineKey !== ck || now - st.marineAt > 30 * 60e3)) {
       const [la, lo] = st.coast.seaPoint || [loc.lat, loc.lon];
-      try { st.marine = await marine(la, lo); st.marineAt = now; st.marineKey = ck; } catch { st.marine = null; }
+      try { const m = await marine(la, lo); if (seq === st.seq) { st.marine = m; st.marineAt = now; st.marineKey = ck; } } catch { if (seq === st.seq) st.marine = null; }
+      if (seq !== st.seq) return null;
     }
 
     const analyses = (st.data?.storms || []).map((s) => { try { return analyze(s, loc, ctx); } catch (e) { console.warn('TC analysis', s.key, e); return null; } }).filter(Boolean)
@@ -667,7 +677,7 @@
     ].filter((w) => !(w.source === 'official' && w.end && w.end < now))
      .sort((x, y) => (LV[y.level] - LV[x.level]) || ((x.source.startsWith('official') ? 0 : 1) - (y.source.startsWith('official') ? 0 : 1)));
     renderWarnings(warnings);
-    if (window.Storms) window.Storms.update({ data: st.data, dataErr: st.dataErr, analyses, threat, loc });
+    try { window.Storms?.update({ data: st.data, dataErr: st.dataErr, analyses, threat, loc }); } catch (e) { console.error('SkyPulse: cyclone tracker', e); }
 
     const nowState = threat ? threat.series[0] : null;
     return {
@@ -692,6 +702,6 @@
 
   window.Hazards = {
     init, update, renderDetail, localAgency,
-    lib: { track, stateAt, ssCat, ssColor, SS, quadPolygon, computedCone, unwrap, distKm, bearing, dest, KT, NM, CONE_NM },
+    lib: { track, stateAt, ssCat, ssColor, ssInk, catNum, stormIcon, SS, quadPolygon, computedCone, unwrap, distKm, bearing, dest, KT, NM, CONE_NM },
   };
 })();

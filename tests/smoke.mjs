@@ -66,10 +66,10 @@ async function route(ctx, sc, hits) {
   });
 }
 
-async function newPage(browser, sc, vp, hits, state) {
+async function newPage(browser, sc, vp, hits, state, extra = {}) {
   const place = F.PLACES[sc.place];
   const ctx = await browser.newContext({ ...VIEWPORTS[vp], geolocation: { latitude: place.lat, longitude: place.lon, accuracy: 12 }, permissions: ['geolocation'],
-    ...(state ? { storageState: state } : {}), serviceWorkers: 'block' });
+    ...(state ? { storageState: state } : {}), serviceWorkers: 'block', ...extra });
   await route(ctx, sc, hits);
   const page = await ctx.newPage();
   const problems = [];
@@ -127,7 +127,7 @@ if (!ONLY || ONLY === 'interact') {
     // storm list → select another storm, scrub the forecast, full-screen map
     await page.locator('.storm-row').nth(1).click(); await page.waitForTimeout(500);
     const title = await page.locator('#tcTitle').textContent();
-    if (!/Zelia|Kong/.test(title)) fail('selecting a storm did not update the detail card: ' + title);
+    if (/Kirk/.test(title) || !/Zelia|Kong|Lane|Dana/.test(title)) fail('selecting a storm did not update the detail card: ' + title);
     await page.locator('#spTimeInput').fill('48'); await page.waitForTimeout(300);
     if (!/\+48 h/.test(await page.locator('#spTimeLabel').textContent())) fail('time slider label did not update');
     await page.locator('#spPlay').click(); await page.waitForTimeout(1200); await page.locator('#spPlay').click();
@@ -211,6 +211,19 @@ if (!ONLY || ONLY === 'resilience') {
     if (!/injected start-up failure/.test(await page.locator('#gateErr').textContent())) fail('start-up error details missing');
     await ctx.close();
   }
+  // just after a deploy, a page cached from the previous release loads this release's scripts: it reloads itself once
+  {
+    console.log('▶ stale cached page after a deploy');
+    const { ctx, page } = await newPage(browser, sc, 'desktop', {});
+    const OLD_PAGE = '<!doctype html><meta charset="utf-8"><div id="app" aria-busy="true"><h1 id="placeName"></h1></div><script src="icons.js"></script><script src="hazards.js"></script><script src="app.js"></script>';
+    let served = 0;
+    await ctx.route(new RegExp(`127\\.0\\.0\\.1:${PORT}/(index\\.html)?$`), (r) => (served++ ? r.fallback() : r.fulfill({ status: 200, contentType: 'text/html', body: OLD_PAGE })));
+    await page.goto(BASE);
+    if (!(await ready(page))) fail('stale page did not reload into the current release');
+    if (served < 2) fail('stale page was not reloaded');
+    if (!(await page.locator('#pulseCard').count())) fail('current page not shown after the reload');
+    await ctx.close();
+  }
   // coarse PC positioning flipping between two fixes inside its accuracy must not count as moving
   {
     console.log('▶ jittery desktop location');
@@ -226,6 +239,41 @@ if (!ONLY || ONLY === 'resilience') {
     if (!(await page.locator('#feed li', { hasText: /moved|refined/ }).count())) fail('a precise fix 22 km away was ignored');
     problems.forEach(fail);
     await ctx.close();
+  }
+  // a saved GPS fix is reused at launch: no permission prompt unless the browser already allows location
+  {
+    console.log('▶ saved location on launch');
+    const place = F.PLACES[sc.place];
+    const seed = (ctx) => ctx.addInitScript((fix) => {
+      window.__geo = 0;
+      const g = navigator.geolocation, w = g.watchPosition.bind(g), c = g.getCurrentPosition.bind(g);
+      g.watchPosition = (...a) => { window.__geo++; return w(...a); };
+      g.getCurrentPosition = (...a) => { window.__geo++; return c(...a); };
+      if (!localStorage.getItem('skypulse.lastGps')) localStorage.setItem('skypulse.lastGps', JSON.stringify(fix));
+    }, { lat: place.lat, lon: place.lon, acc: 15, at: Date.now() - 2 * 3600e3, name: place.city });
+    {
+      const { ctx, page, problems } = await newPage(browser, sc, 'desktop', {}, null, { permissions: [] });
+      await seed(ctx); await page.goto(BASE);
+      if (!(await ready(page))) fail('saved-location launch never loaded');
+      if (await page.evaluate(() => window.__geo)) fail('asked for the location although a saved fix exists');
+      if (!/Saved location · 2 h ago/.test(await page.locator('#liveText').textContent())) fail('status does not say the saved location is used: ' + await page.locator('#liveText').textContent());
+      if ((await page.locator('#placeName').textContent()) !== place.city) fail('saved place name not shown');
+      await page.locator('#locateBtn').click(); await page.waitForTimeout(400);
+      if (!(await page.evaluate(() => window.__geo))) fail('Live GPS button did not ask for the location');
+      problems.forEach(fail);
+      await ctx.close();
+    }
+    {
+      const { ctx, page, problems } = await newPage(browser, sc, 'desktop', {});
+      await seed(ctx); await page.goto(BASE);
+      await ready(page);
+      if (!(await page.evaluate(() => window.__geo))) fail('location already allowed, but live GPS was not started');
+      if (!/Live · GPS/.test(await page.locator('#liveText').textContent())) fail('not live with location allowed');
+      const fix = await page.evaluate(() => JSON.parse(localStorage.getItem('skypulse.lastGps')));
+      if (!fix || fix.lat !== +place.lat.toFixed(3) || Date.now() - fix.at > 60e3) fail('new GPS fix not saved (rounded): ' + JSON.stringify(fix));
+      problems.forEach(fail);
+      await ctx.close();
+    }
   }
 }
 await browser.close();

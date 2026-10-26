@@ -22,7 +22,7 @@
     ['sun', 'Sun tracker', 'Sun'],
   ].map(([id, label, tab]) => ({ id, label, tab }));
   const DEFAULT_ORDER = SECTIONS.map((s) => s.id);
-  const TILES = [['feels', 'Feels like'], ['hum', 'Humidity'], ['dew', 'Dew point'], ['cloud', 'Cloud cover'], ['wind', 'Wind'], ['press', 'Pressure'],
+  const TILES = [['feels', 'Feels like'], ['hum', 'Humidity'], ['dew', 'Dew point'], ['cloud', 'Cloud cover'], ['sky', 'Sky colour'], ['wind', 'Wind'], ['press', 'Pressure'],
     ['rain', 'Rain · next 24 h'], ['nowcast', 'Nowcast · 2 h'], ['uv', 'UV index'], ['vis', 'Visibility'], ['aqi', 'Air quality'], ['moon', 'Moon']];
   const ACCENTS = [['#7cc4ff', 'Sky'], ['#4fd1c5', 'Teal'], ['#b39bff', 'Violet'], ['#ffb84d', 'Amber'], ['#ff7aa8', 'Rose'], ['#8fdc5a', 'Lime']];
   const LAYERS = [['cone', 'Cones'], ['track', 'Forecast track'], ['past', 'Past track'], ['radii', 'Wind radii'], ['labels', 'Labels']];
@@ -42,11 +42,12 @@
     pulseWin: [[1, '1 h'], [3, '3 h'], [6, '6 h'], [12, '12 h'], [24, '24 h']],
     min15: [['auto', 'Auto (US & Europe)'], ['off', 'Off']],
     cacheMin: [[15, '15 min'], [20, '20 min'], [30, '30 min'], [0, 'Off']],
+    locLaunch: [['saved', 'Saved location'], ['gps', 'Ask for GPS']],
   };
   const DEFAULTS = {
     temp: 'C', wind: 'kmh', precip: 'mm', pressure: 'hPa', dist: 'km', clock: 'auto',
     theme: 'dynamic', accent: ACCENTS[0][0], density: 'comfortable', effects: 'full', defaultTab: 'last',
-    profile: 'standard', pulseWin: 6, pulseThr: 40, min15: 'auto', cacheMin: 15,
+    profile: 'standard', pulseWin: 6, pulseThr: 40, min15: 'auto', cacheMin: 15, locLaunch: 'saved',
     order: DEFAULT_ORDER, hidden: [], tilesHidden: [],
     stormLayers: { cone: true, track: true, past: true, radii: true, labels: true },
   };
@@ -243,10 +244,11 @@
         row(`Rain alert at ${P.pulseThr}%`, el('input', { type: 'range', min: 10, max: 90, step: 5, value: P.pulseThr, 'aria-label': 'Rain chance threshold', onchange: (e) => patch({ pulseThr: +e.target.value }) }))),
       group('Data & privacy',
         row('15-minute data', seg('min15', OPT.min15, '15-minute data'), 'Open-Meteo 15-minute forecasts for the US and Europe'),
+        row('On opening', seg('locLaunch', OPT.locLaunch, 'Location on opening'), P.locLaunch === 'gps' ? 'Asks the browser for your position every time the app opens' : 'Starts from your last GPS fix (kept only on this device, rounded to about 100 m) without a permission prompt. Live GPS starts by itself when the browser already allows it; tap Live GPS to update.'),
         row('Reuse saved weather for', seg('cacheMin', OPT.cacheMin, 'Cache duration'), 'Opening the app or a searched place within this time uses the copy saved on this device instead of a new request. Manual refresh always fetches.'),
         row('Saved on this device', el('div', { class: 'set-data' }, el('span', { class: 'muted', text: extra.dataInfo() }),
           el('button', { type: 'button', class: 'btn ghost small', text: 'Clear saved data', onclick: () => { extra.clearData?.(); renderSheet(); } })),
-        'Settings, recent forecasts (up to 8 places, 24 h), place names and coastline checks. Nothing is uploaded.'),
+        'Settings, your last GPS fix, recent forecasts (up to 8 places, 24 h), place names and coastline checks. Nothing is uploaded.'),
         el('button', { type: 'button', class: 'btn ghost small danger', text: 'Reset all settings', onclick: () => { if (confirm('Reset every SkyPulse setting to its default?')) patch(structuredClone(DEFAULTS)); } })),
     );
     body.scrollTop = scroll;

@@ -17,7 +17,7 @@
   <link rel="apple-touch-icon" href="icons/icon-180.png" />
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="vendor/leaflet/leaflet.css" />
-  <link rel="stylesheet" href="styles.css?v=13" />
+  <link rel="stylesheet" href="styles.css?v=14" />
 </head>
 <body class="scene-clear-day">
   <div class="sky" aria-hidden="true"></div>
@@ -314,8 +314,8 @@
   <div class="gate" id="gate">
     <div class="gate-box">
       <div class="gate-spinner" id="gateSpinner"></div>
-      <h2 id="gateTitle">Finding your location…</h2>
-      <p id="gateMsg" class="muted">Allow location access for live, hyper-local updates.</p>
+      <h2 id="gateTitle">Starting SkyPulse…</h2>
+      <p id="gateMsg" class="muted">Loading your weather.</p>
       <div class="gate-actions" id="gateActions" hidden>
         <button class="btn" id="gateRetry">Try GPS again</button>
         <button class="btn ghost" id="gateSearch">Search a city instead</button>
@@ -342,17 +342,18 @@
 
   <div class="toast" id="toast" role="status" hidden></div>
 
-  <script src="guard.js?v=13"></script>
+  <script src="guard.js?v=14"></script>
   <script src="vendor/chartjs/chart.umd.js"></script>
   <script src="vendor/leaflet/leaflet.js"></script>
-  <script src="icons.js?v=13"></script>
-  <script src="settings.js?v=13"></script>
-  <script src="cache.js?v=13"></script>
-  <script src="fx.js?v=13"></script>
-  <script src="sun.js?v=13"></script>
-  <script src="pulse.js?v=13"></script>
-  <script src="hazards.js?v=13"></script>
-  <script src="storms.js?v=13"></script>
-  <script src="app.js?v=13"></script>
+  <script src="icons.js?v=14"></script>
+  <script src="settings.js?v=14"></script>
+  <script src="cache.js?v=14"></script>
+  <script src="fx.js?v=14"></script>
+  <script src="sun.js?v=14"></script>
+  <script src="pulse.js?v=14"></script>
+  <script src="sky.js?v=14"></script>
+  <script src="hazards.js?v=14"></script>
+  <script src="storms.js?v=14"></script>
+  <script src="app.js?v=14"></script>
 </body>
 </html>

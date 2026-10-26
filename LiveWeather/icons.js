@@ -113,11 +113,14 @@
     return `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${PULSE[kind] || PULSE.alert}</svg>`;
   }
 
-  /** map marker: the cyclone symbol, arms mirrored for clockwise (southern-hemisphere) rotation */
-  const stormGlyph = (fill, south = false, size = 30) =>
+  /** the cyclone symbol, arms mirrored for clockwise (southern-hemisphere) rotation. With a category it gets a
+   *  larger, upright centre showing the number (only the arms spin). */
+  const ARM = '<path d="M1.6-2.9C.5-7.6-4.3-10-9.2-8.3c3.7.4 6.3 2.4 7.1 5.7z"/>';
+  const stormGlyph = (fill, south = false, size = 30, cat = 0, ink = '#0b1530') =>
     `<svg width="${size}" height="${size}" viewBox="-12 -12 24 24" aria-hidden="true"><g class="spin${south ? ' s' : ''}"><g fill="${fill}" stroke="#0b1530" stroke-width="1"${south ? ' transform="scale(-1 1)"' : ''}>` +
-    '<path d="M1.6-2.9C.5-7.6-4.3-10-9.2-8.3c3.7.4 6.3 2.4 7.1 5.7z"/><path d="M1.6-2.9C.5-7.6-4.3-10-9.2-8.3c3.7.4 6.3 2.4 7.1 5.7z" transform="rotate(180)"/>' +
-    '<circle r="4.2"/></g><circle r="1.5" fill="#0b1530"/></g></svg>';
+    `${ARM}<g transform="rotate(180)">${ARM}</g>` + (cat ? '' : '<circle r="4.2"/>') + '</g>' + (cat ? '' : '<circle r="1.5" fill="#0b1530"/>') + '</g>' +
+    (cat ? `<circle r="5.6" fill="${fill}" stroke="#0b1530" stroke-width="1"/><text y=".4" text-anchor="middle" dominant-baseline="central" font-size="7.6" font-weight="800" font-family="Inter, system-ui, sans-serif" fill="${ink}">${Number(cat)}</text>` : '') +
+    '</svg>';
 
   window.WX = { iconSVG, WMO, scene, umbrellaSVG, pulseSVG, stormGlyph };
 })();

@@ -1,10 +1,23 @@
 /* SkyPulse — live weather for your location.
  * Data: Open-Meteo forecast (incl. 15-minute data for the US & Europe) + air-quality APIs (no key), BigDataCloud
  * reverse geocoding. Uses Prefs/Layout (settings.js), WxCache (cache.js), Pulse (pulse.js), Hazards (hazards.js),
- * Storms (storms.js), FX (fx.js), Solar (sun.js) and WX (icons.js).
+ * Storms (storms.js), Sky (sky.js), FX (fx.js), Solar (sun.js) and WX (icons.js).
  */
 (() => {
   'use strict';
+
+  // Right after a deploy the browser can still hold the previous release's page, which then loads this newer
+  // script without the elements and modules it needs: fetch the page fresh and reload, once per tab session.
+  if (typeof Prefs === 'undefined' || !document.getElementById('pulseCard')) {
+    try {
+      if (!sessionStorage.getItem('skypulse.reloaded')) {
+        sessionStorage.setItem('skypulse.reloaded', '1');
+        fetch(location.href, { cache: 'reload', credentials: 'omit' }).catch(() => null).finally(() => location.reload());
+      }
+    } catch { /* storage blocked: leave the page as it is */ }
+    return;
+  }
+  try { sessionStorage.removeItem('skypulse.reloaded'); } catch { /* storage blocked */ }
 
   const $ = (s) => document.querySelector(s);
   const HOUR = 3600e3;
@@ -86,7 +99,7 @@
   };
   const dur = (ms) => { const m = Math.round(Math.abs(ms) / 60e3); const h = Math.floor(m / 60); return h ? `${h}h ${m % 60}m` : `${m} min`; };
   const deviceTime = (ms) => new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit', ...(cycle() ? { hourCycle: cycle() } : {}) });
-  const ago = (ms) => { const s = Math.round((Date.now() - ms) / 1000); if (s < 10) return 'just now'; if (s < 60) return `${s}s ago`; const m = Math.round(s / 60); return m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`; };
+  const ago = (ms) => { const s = Math.round((Date.now() - ms) / 1000); if (s < 10) return 'just now'; if (s < 60) return `${s}s ago`; const m = Math.round(s / 60); if (m < 60) return `${m} min ago`; const h = Math.round(m / 60); return h < 48 ? `${h} h ago` : `${Math.round(h / 24)} days ago`; };
 
   /* ---------------- descriptors ---------------- */
   const DIRS = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
@@ -121,6 +134,8 @@
 
   const HOURLY = ['temperature_2m', 'relative_humidity_2m', 'dew_point_2m', 'apparent_temperature', 'precipitation_probability', 'precipitation', 'weather_code', 'pressure_msl', 'cloud_cover', 'cloud_cover_low', 'cloud_cover_mid', 'cloud_cover_high', 'visibility', 'wind_speed_10m', 'wind_direction_10m', 'wind_gusts_10m', 'uv_index', 'is_day'];
   const CURRENT = ['temperature_2m', 'relative_humidity_2m', 'apparent_temperature', 'is_day', 'precipitation', 'weather_code', 'cloud_cover', 'pressure_msl', 'wind_speed_10m', 'wind_direction_10m', 'wind_gusts_10m'];
+  // humidity at ~1.5 / 3 / 5.5 / 9 km for the sky-colour comment (dropped again by the 'legacy' fallback request)
+  const HOURLY_SKY = ['relative_humidity_850hPa', 'relative_humidity_700hPa', 'relative_humidity_500hPa', 'relative_humidity_300hPa'];
   const DAILY = ['weather_code', 'temperature_2m_max', 'temperature_2m_min', 'sunrise', 'sunset', 'precipitation_sum', 'precipitation_probability_max', 'wind_gusts_10m_max', 'uv_index_max'];
   // 15-minute variables for the US & Europe (Open-Meteo serves these free; native 15-min models there)
   const MIN15 = ['precipitation', 'rain', 'snowfall', 'temperature_2m', 'apparent_temperature', 'relative_humidity_2m', 'weather_code', 'wind_speed_10m', 'wind_direction_10m', 'wind_gusts_10m', 'visibility', 'is_day'];
@@ -138,13 +153,15 @@
   const forecastURL = ({ lat, lon }, mode) => 'https://api.open-meteo.com/v1/forecast?' + new URLSearchParams({
     latitude: r3(lat), longitude: r3(lon), timezone: 'auto', timeformat: 'unixtime',
     past_days: 2, forecast_days: 8, wind_speed_unit: 'kmh',
-    current: CURRENT.join(','), hourly: HOURLY.join(','), daily: DAILY.join(','),
+    current: CURRENT.join(','), hourly: (mode === 'legacy' ? HOURLY : HOURLY.concat(HOURLY_SKY)).join(','), daily: DAILY.join(','),
     minutely_15: mode === 'm15' ? MIN15.join(',') : 'precipitation',
     ...(mode === 'legacy' ? {} : { forecast_minutely_15: 96, past_minutely_15: 4 }),
   });
-  const aqURL = ({ lat, lon }) => 'https://air-quality-api.open-meteo.com/v1/air-quality?' + new URLSearchParams({
-    latitude: r3(lat), longitude: r3(lon), current: 'us_aqi,pm2_5,pm10', timezone: 'auto',
+  const aqURL = ({ lat, lon }, sky = true) => 'https://air-quality-api.open-meteo.com/v1/air-quality?' + new URLSearchParams({
+    latitude: r3(lat), longitude: r3(lon), current: 'us_aqi,pm2_5,pm10' + (sky ? ',aerosol_optical_depth,dust' : ''), timezone: 'auto',
   });
+  /** air quality incl. aerosols for the sky comment; if the extra fields are refused, the plain request */
+  const fetchAQ = (loc) => getJSON(aqURL(loc), 10000).catch((e) => (/HTTP 400/.test(e.message) ? getJSON(aqURL(loc, false), 10000) : null)).catch(() => null);
   const reverseURL = ({ lat, lon }) => 'https://api.bigdatacloud.net/data/reverse-geocode-client?' + new URLSearchParams({
     latitude: r3(lat), longitude: r3(lon), localityLanguage: 'en',
   });
@@ -172,6 +189,7 @@
       pp: h.precipitation_probability, pr: h.precipitation, wc: h.weather_code, ps: h.pressure_msl,
       cc: h.cloud_cover, cl: h.cloud_cover_low, cm: h.cloud_cover_mid, ch: h.cloud_cover_high, vis: h.visibility,
       ws: h.wind_speed_10m, wd: h.wind_direction_10m, wg: h.wind_gusts_10m, uv: h.uv_index, day: h.is_day,
+      rh850: h.relative_humidity_850hPa || [], rh700: h.relative_humidity_700hPa || [], rh500: h.relative_humidity_500hPa || [], rh300: h.relative_humidity_300hPa || [],
     };
     const D = {
       time: ms(dl.time), wc: dl.weather_code, tmax: dl.temperature_2m_max, tmin: dl.temperature_2m_min,
@@ -252,7 +270,7 @@
   function renderHero() {
     const { cur, H, D } = S.t; const now = Date.now(); const di = dIdx(now);
     $('#placeName').textContent = S.loc.name || `${Math.abs(S.loc.lat).toFixed(2)}°${S.loc.lat >= 0 ? 'N' : 'S'}, ${Math.abs(S.loc.lon).toFixed(2)}°${S.loc.lon >= 0 ? 'E' : 'W'}`;
-    $('#placeSub').textContent = S.loc.sub || (S.loc.source === 'gps' ? 'Your current location' : '');
+    $('#placeSub').textContent = S.loc.sub || (S.loc.source === 'gps' ? 'Your current location' : S.loc.source === 'saved' ? 'Your saved location' : '');
     $('#heroIcon').innerHTML = WX.iconSVG(cur.wc, cur.day, 110);
     $('#heroTemp').textContent = fT(cur.t);
     $('#heroCond').textContent = cond(cur.wc);
@@ -382,6 +400,18 @@
     tile('cloud', `<div class="card tile"><div class="t-head">${ico('cloud')}Cloud cover</div>
       <div class="t-val">${Math.round(cur.cc)}<small>%</small></div>
       <div class="layers">${layer('Low', H.cl[i])}${layer('Mid', H.cm[i])}${layer('High', H.ch[i])}</div></div>`);
+    // Sky colour: what the sky should look like now, from sun height, cloud layers, aerosols and humidity aloft
+    if (typeof Sky !== 'undefined' && typeof Solar !== 'undefined') {
+      const sun = Solar.position(now, S.t.lat, S.t.lon), aqc = S.aq?.current || {};
+      const sky = Sky.describe({ el: sun.el, sunDir: Math.abs(sun.el) < 12 ? `sun in the ${dirName(sun.az)}` : '', cl: H.cl[i], cm: H.cm[i], ch: H.ch[i], cc: cur.cc, wc: cur.wc, pr: cur.pr, vis,
+        rh: cur.rh, rh850: at('rh850', now), rh700: at('rh700', now), rh500: at('rh500', now), rh300: at('rh300', now),
+        aod: num(aqc.aerosol_optical_depth) ? aqc.aerosol_optical_depth : null, dust: num(aqc.dust) ? aqc.dust : null, pm25: num(aqc.pm2_5) ? aqc.pm2_5 : null, elev: S.t.elev || 0 });
+      tile('sky', `<div class="card tile sky-tile"><div class="t-head">${ico('eye')}Sky colour now</div>
+        <div class="sky-row"><span class="sky-swatch" style="background:linear-gradient(180deg, ${sky.zenith}, ${sky.horizon})" aria-hidden="true"></span>
+        <div><div class="sky-title">${esc(sky.title)}</div><p class="sky-text">${esc(sky.comment)}</p>${sky.notes.map((n) => `<p class="sky-text sky-note">${esc(n)}</p>`).join('')}</div></div>
+        <div class="sky-factors">${sky.factors.map((f) => `<span>${esc(f)}</span>`).join('')}</div>
+        <div class="t-note">Estimated from the forecast (CAMS aerosols via Open-Meteo), not observed.</div></div>`);
+    }
     // Wind
     tile('wind', `<div class="card tile"><div class="t-head">${ico('wind')}Wind</div>
       <div class="t-val">${fW(cur.ws)}<small>${wU()}</small></div>
@@ -852,21 +882,8 @@
     const key = `${lat.toFixed(2)},${lon.toFixed(2)},${yr}`;
     const jan1 = Date.UTC(yr, 0, 1), nDays = (Date.UTC(yr + 1, 0, 1) - jan1) / DAY;
     if (!ST.yr || ST.yr.key !== key) {
-      const dl = [], el = [], dec = [];
-      for (let k = 0; k < nDays; k++) { const t = Solar.times(jan1 + k * DAY, lat, lon, off); dl.push(Math.max(0, Math.min(24, t.dayLen / HOUR))); el.push(t.maxEl); dec.push(t.decl); }
-      // tropics: the sun is overhead on the day(s) the declination crosses the latitude. Noon sampling can
-      // miss the exact crossing by up to ~0.2°, so those days are pinned to 90°.
-      const zenith = [];
-      if (Math.abs(lat) <= 23.45) for (let k = 0; k < nDays - 1; k++) {
-        if ((dec[k] - lat) * (dec[k + 1] - lat) <= 0) { const z = Math.abs(dec[k] - lat) <= Math.abs(dec[k + 1] - lat) ? k : k + 1; if (!zenith.includes(z)) zenith.push(z); }
-      }
-      zenith.forEach((z) => { el[z] = 90; });
-      const arg = (a, better) => a.reduce((b, v, k) => (better(v, a[b]) ? k : b), 0);
       ST.yr = {
-        key, yr, jan1, nDays, dl, el, lat, lon, off,
-        iMin: arg(dl, (a, b) => a < b), iMax: arg(dl, (a, b) => a > b),
-        iElMin: arg(el, (a, b) => a < b), iElMax: arg(el, (a, b) => a > b),
-        zenith,
+        key, yr, jan1, nDays, lat, lon, off, ...Solar.year(jan1, nDays, lat, lon, off),
         md: (k) => new Date(jan1 + k * DAY).toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' }),
       };
     }
@@ -875,7 +892,7 @@
   }
 
   function buildYearChart(Yr) {
-    const { yr, jan1, nDays, dl, el, todayK, iMin, iMax, iElMin, iElMax, md, zenith } = Yr;
+    const { yr, jan1, nDays, dl, el, todayK, iMin, iMax, iElMax, md, zenith, dayMarks, elMarks, sunSpan, nightSpan } = Yr;
     const yw = Math.max(300, Math.round($('#stYear').parentElement.clientWidth - 24));
     $('#stYear').setAttribute('viewBox', `0 0 ${yw} 150`);
     const W = { L: 34, R: yw - 34, TOP: 10, BOT: 118 };
@@ -896,8 +913,8 @@
     g += svgNS('path', { class: 'yr-area', d: `M${W.L},${Yh(0)}L${ptsH.join('L')}L${W.R},${Yh(0)}Z` });
     g += svgNS('path', { class: 'yr-line', d: 'M' + ptsH.join('L') });
     g += svgNS('path', { class: 'yr-el', d: 'M' + ptsE.join('L') });
-    [iMin, iMax].forEach((k) => { g += svgNS('circle', { class: 'yr-ext', cx: X(k), cy: Yh(dl[k]), r: 3.5 }); });
-    [iElMin, ...(zenith.length ? zenith : [iElMax])].forEach((k) => { g += svgNS('circle', { class: 'yr-el-ext', cx: X(k), cy: Ye(el[k]), r: 3.5 }); });
+    elMarks.forEach((m) => { g += svgNS('circle', { class: 'yr-el-ext' + (m.big ? ' big' : ''), cx: X(m.k).toFixed(1), cy: Ye(el[m.k]).toFixed(1), r: m.big ? 5 : 3.6 }); });
+    dayMarks.forEach((k) => { g += svgNS('circle', { class: 'yr-ext', cx: X(k).toFixed(1), cy: Yh(dl[k]).toFixed(1), r: 4.2 }); });
     const tx = X(todayK), ty = Yh(dl[todayK] ?? 0);
     g += svgNS('line', { class: 'yr-today', x1: tx, x2: tx, y1: W.TOP, y2: W.BOT });
     g += svgNS('circle', { class: 'yr-dot', cx: tx, cy: ty, r: 5 });
@@ -908,9 +925,10 @@
     $('#stYear').innerHTML = g;
     $('#stYearTip').hidden = true;
     const nSun = dl.filter((v) => v >= 23.99).length, nNight = dl.filter((v) => v <= 0.01).length;
+    const range = (sp) => (sp[0] === sp[1] ? md(sp[0]) : `${md(sp[0])}–${md(sp[1])}`);
     $('#stYearNote').textContent = [
-      nSun ? `Midnight sun ${nSun} days/yr` : `Longest ${md(iMax)} · ${hmH(dl[iMax])}`,
-      nNight ? `Polar night ${nNight} days/yr` : `Shortest ${md(iMin)} · ${hmH(dl[iMin])}`,
+      nSun ? `Midnight sun ${range(sunSpan)} (${nSun} day${nSun > 1 ? 's' : ''})` : `Longest ${md(iMax)} · ${hmH(dl[iMax])}`,
+      nNight ? `Polar night ${range(nightSpan)} (${nNight} day${nNight > 1 ? 's' : ''})` : `Shortest ${md(iMin)} · ${hmH(dl[iMin])}`,
       zenith.length ? `Sun overhead (90°) ${zenith.map(md).join(' & ')}` : `Highest sun ${md(iElMax)} · ${fDeg(el[iElMax])}`,
     ].join('  ·  ');
   }
@@ -1003,7 +1021,9 @@
     const sunG = $('#stSunG'); if (!sunG) return;
     sunG.setAttribute('transform', `translate(${x.toFixed(1)} ${y.toFixed(1)})`);
     sunG.classList.toggle('sun-down', p.el < 0);
-    const txt = $('#stSunTxt'); txt.textContent = `${p.el.toFixed(1)}°`; txt.setAttribute('y', p.el < 0 ? 30 : -20);
+    // label above the dot (below it would hit the sunrise/sunset captions), pulled inwards at the chart edges
+    const txt = $('#stSunTxt'); txt.textContent = `${p.el.toFixed(1)}°`; txt.setAttribute('y', -20);
+    txt.setAttribute('text-anchor', x < CV.L + 30 ? 'start' : x > CV.R - 30 ? 'end' : 'middle'); txt.setAttribute('x', x < CV.L + 30 ? -8 : x > CV.R - 30 ? 8 : 0);
     const nl = $('#stNowLine'); nl.setAttribute('x1', x.toFixed(1)); nl.setAttribute('x2', x.toFixed(1)); nl.style.display = now >= d0 && now <= d1 ? '' : 'none';
     $('#stClipRect').setAttribute('width', Math.max(0, x - CV.L).toFixed(1));
 
@@ -1040,7 +1060,7 @@
     const L = S.loc;
     if (!L) { $('#liveText').textContent = 'Waiting for location'; return; }
     if (L.source === 'gps') { pill.classList.add('live'); $('#liveText').textContent = `Live · GPS ±${L.acc < 1000 ? Math.round(L.acc) + ' m' : (L.acc / 1000).toFixed(1) + ' km'}`; }
-    else if (L.source === 'saved') { pill.classList.add('manual'); $('#liveText').textContent = 'Last known location'; }
+    else if (L.source === 'saved') { pill.classList.add('manual'); $('#liveText').textContent = L.at ? `Saved location · ${ago(L.at)}` : 'Last known location'; }
     else { pill.classList.add('manual'); $('#liveText').textContent = 'Manual location · auto-refreshing'; }
     const lat = `${Math.abs(L.lat).toFixed(3)}°${L.lat >= 0 ? 'N' : 'S'}`, lon = `${Math.abs(L.lon).toFixed(3)}°${L.lon >= 0 ? 'E' : 'W'}`;
     $('#locMeta').textContent = `${lat}, ${lon}${S.t && num(S.t.elev) ? ` · ${Math.round(S.t.elev)} m` : ''}`;
@@ -1161,7 +1181,7 @@
     try {
       const [fc, aq, place] = await Promise.all([
         fetchForecast(loc, mode),
-        getJSON(aqURL(loc), 10000).catch(() => null),
+        fetchAQ(loc),
         loc.name && loc.cc ? null : reverseGeocode(loc).catch(() => null),
       ]);
       if (token !== S.fetchToken) return; // superseded by a newer request
@@ -1189,6 +1209,8 @@
   function applyData(fc, aq, { at, source, reason, token }) {
     const loc = S.loc;
     store.set('lastLoc', { lat: loc.lat, lon: loc.lon, name: loc.name, sub: loc.sub, cc: loc.cc, country: loc.country, admins: loc.admins });
+    // the next launch starts from this fix instead of a permission prompt (rounded to ~100 m, like the API requests)
+    if (loc.source === 'gps') store.set('lastGps', { lat: +r3(loc.lat), lon: +r3(loc.lon), acc: Math.round(loc.acc) || null, at: Date.now(), name: loc.name, sub: loc.sub, cc: loc.cc, country: loc.country, admins: loc.admins });
     S.t = processData(fc); S.t.offset = fc.utc_offset_seconds * 1000; S.t.lat = loc.lat; S.t.lon = loc.lon; S.aq = aq;
     S.lastFetch = at; S.source = source;
     S.nextFetch = source === 'stale' ? Date.now() + 60e3 : Math.max(Date.now() + 30e3, nextRefreshAt(at));
@@ -1213,7 +1235,7 @@
     S.hzAt = Date.now();
     try {
       const hz = await Hazards.update({ loc: { lat: S.t.lat, lon: S.t.lon }, t: S.t, cc: loc.cc, countryName: loc.country, admins: loc.admins });
-      if (token !== S.fetchToken) return;
+      if (!hz || token !== S.fetchToken) return;                    // superseded by a newer place or update
       S.hz = hz;
     } catch (e) { console.warn('hazards', e); return; }
     safely('weather effects', applyFx);
@@ -1294,6 +1316,19 @@
     S.mode = 'gps'; renderStatus(); $('#locateBtn').classList.add('on');
     if (!S.t) showGate('Finding your location…', 'Allow location access for live, hyper-local updates.');
     S.watchId = navigator.geolocation.watchPosition(onPos, onPosErr, { enableHighAccuracy: true, maximumAge: 30000, timeout: 20000 });
+  }
+  /** At launch, reuse the last GPS fix instead of prompting for permission on every visit. Live tracking starts by
+   *  itself only when the browser already allows it (no prompt), or when the user chose to be asked each time. */
+  async function launchLocation() {
+    const saved = store.get('lastGps', null);
+    let state = 'unknown';
+    try {
+      const q = navigator.permissions?.query({ name: 'geolocation' });
+      state = (await Promise.race([q, new Promise((r) => setTimeout(r, 1500))]))?.state || state;
+    } catch { /* Permissions API missing */ }
+    if (!saved || !num(saved.lat) || !num(saved.lon) || P('locLaunch') === 'gps' || state === 'granted') { startGPS(); return; }
+    S.mode = 'manual';
+    setLocation({ ...saved, source: 'saved' }, `Using your saved location from ${ago(saved.at)} — tap Live GPS to update it`);
   }
   function stopGPS() {
     if (S.watchId != null) { navigator.geolocation.clearWatch(S.watchId); S.watchId = null; }
@@ -1442,7 +1477,7 @@
   });
   Prefs.hooks({
     dataInfo: () => { if (!hasCache()) return ''; const i = WxCache.info(); return i.places ? `${i.places} place${i.places > 1 ? 's' : ''} · ${i.kb} KB` : 'No saved forecasts'; },
-    clearData: () => { if (hasCache()) WxCache.clear(); store.set('lastLoc', null); toast('Saved forecasts and places cleared'); },
+    clearData: () => { if (hasCache()) WxCache.clear(); store.set('lastLoc', null); store.set('lastGps', null); toast('Saved forecasts and places cleared'); },
   });
 
   let resizeTimer;
@@ -1553,6 +1588,6 @@
   setInterval(tick, 1000);
   setInterval(() => { if (S.t) { renderSun(); checkUpcoming(); renderFeed(); pruneAnnounced(); } }, 30e3);
   setInterval(() => { if (S.t && !document.hidden) updateHazards(); }, HZ_MS);
-  feed('info', '👋', 'SkyPulse started — requesting your location');
-  startGPS();
+  feed('info', '👋', 'SkyPulse started');
+  launchLocation();
 })();

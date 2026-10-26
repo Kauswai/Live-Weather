@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "pulse": "node pulse.test.mjs",
+    "sun": "node sun.test.mjs",
     "smoke": "node smoke.mjs ../smoke-out",
-    "test": "node pulse.test.mjs && node smoke.mjs ../smoke-out"
+    "test": "node pulse.test.mjs && node sun.test.mjs && node smoke.mjs ../smoke-out"
   },
   "devDependencies": {
     "playwright": "^1.48.0"

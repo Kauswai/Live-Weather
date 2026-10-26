@@ -14,7 +14,7 @@
   const INT_ERR = [[0, 0], [12, 6], [24, 9], [36, 11], [48, 12], [72, 14], [96, 15], [120, 16]];
   const RADII = [['34', '#ffe066'], ['50', '#ff9f43'], ['64', '#ff5d5d']];
   let H = null;
-  const st = { map: null, g: null, data: null, dataErr: null, analyses: [], threat: null, loc: null, sel: null, userSel: false, t: 0, play: null, fitKey: null, needFit: false, full: false };
+  const st = { map: null, g: null, data: null, dataErr: null, analyses: [], threat: null, loc: null, sel: null, userSel: false, t: 0, play: null, fitKey: null, needFit: false, full: false, zooming: false, pending: false };
   const lib = () => window.Hazards?.lib;
   const layers = () => Prefs.get('stormLayers');
   const selected = () => st.analyses.find((a) => a.s.key === st.sel) || null;
@@ -33,6 +33,9 @@
     // wheel-zoom only once the map has focus (or is full screen), so the page still scrolls past it
     st.map.on('focus', () => st.map.scrollWheelZoom.enable());
     st.map.on('blur', () => { if (!st.full) st.map.scrollWheelZoom.disable(); });
+    // never swap layers in the middle of a zoom animation (Leaflet animates layers it may no longer own): redraw after it
+    st.map.on('zoomstart', () => { st.zooming = true; });
+    st.map.on('zoomend', () => { st.zooming = false; if (st.pending) { st.pending = false; safe('map', draw); } });
     st.map.setView([20, st.loc ? st.loc.lon : 0], 2);
     return true;
   }
@@ -48,6 +51,7 @@
   /* ------------------------------------------------------------------ draw */
   function draw() {
     if (!ensureMap() || !st.loc) return;
+    if (st.zooming) { st.pending = true; return; }
     const Lb = lib(), lay = layers(), loc = st.loc, an = st.analyses;
     Object.values(st.g).forEach((g) => g.clearLayers());
     const ref = bestRef([...an.map((a) => a.cur.lon), loc.lon]);
@@ -94,8 +98,8 @@
         L.polygon(R(Lb.quadPolygon(s.lat, s.lon, r)), { color: c, weight: 1.2, fillColor: c, fillOpacity: isSel ? 0.18 : 0.12, interactive: false }).addTo(st.g.radii);
       });
       // the storm symbol
-      const size = isSel ? 38 : 28;
-      const icon = L.divIcon({ className: 'storm-ico' + (isSel ? ' sel' : ''), html: WX.stormGlyph(Lb.ssColor(a.cur.vmax), a.south, size), iconSize: [size, size], iconAnchor: [size / 2, size / 2] });
+      const size = (isSel ? 38 : 28) + (Lb.catNum(a.cur.vmax) ? 6 : 0);
+      const icon = L.divIcon({ className: 'storm-ico' + (isSel ? ' sel' : ''), html: Lb.stormIcon(a.cur.vmax, a.south, size), iconSize: [size, size], iconAnchor: [size / 2, size / 2] });
       const mk = L.marker(P(a.cur.lat, a.cur.lon), { icon, title: s.name, riseOnHover: true, zIndexOffset: isSel ? 1000 : 0 }).addTo(st.g.storms).on('click', () => select(s.key));
       const lbl = `<b>${H.esc(s.name)}</b> <span>${H.esc(Lb.ssCat(a.cur.vmax)[1].replace('Category ', 'Cat ').replace('Tropical ', 'T. '))}</span>`;
       mk.bindTooltip(lbl, lay.labels ? { permanent: true, direction: 'right', offset: [size / 2, 0], className: 'storm-label' } : { direction: 'top', className: 'storm-label' });
@@ -125,7 +129,7 @@
   function legend() {
     const Lb = lib();
     const cats = [[25, 'TD'], [34, 'TS'], [64, '1'], [83, '2'], [96, '3'], [113, '4'], [137, '5']];
-    $('#tcLegend').innerHTML = `<span class="lg-cats">${cats.map(([v, n]) => `<i style="background:${Lb.ssColor(v)}" title="${n === 'TD' ? 'Tropical depression' : n === 'TS' ? 'Tropical storm' : 'Category ' + n}">${n}</i>`).join('')}</span>
+    $('#tcLegend').innerHTML = `<span class="lg-cats">${cats.map(([v, n]) => `<i style="background:${Lb.ssColor(v)};color:${Lb.ssInk(v)}" title="${n === 'TD' ? 'Tropical depression' : n === 'TS' ? 'Tropical storm' : 'Category ' + n}">${n}</i>`).join('')}</span>
       <span><i class="lg-cone"></i>Cone</span><span><i style="background:#ffe066"></i>34</span><span><i style="background:#ff9f43"></i>50</span><span><i style="background:#ff5d5d"></i>64 kt</span><span><i class="lg-you"></i>You</span>`;
   }
 
@@ -147,8 +151,8 @@
     st.map.invalidateSize();
     const a = selected();
     const b = a ? bounds([a], a.level !== 'far') : bounds(st.analyses, true);
-    if (b && b.isValid()) st.map.fitBounds(b.pad(0.15), { maxZoom: a ? 6.5 : 4 });
-    else if (st.loc) st.map.setView([20, lib().unwrap(st.loc.lon, st.ref ?? st.loc.lon)], 2);
+    if (b && b.isValid()) st.map.fitBounds(b.pad(0.15), { maxZoom: a ? 6.5 : 4, animate: false });
+    else if (st.loc) st.map.setView([20, lib().unwrap(st.loc.lon, st.ref ?? st.loc.lon)], 2, { animate: false });
   }
   function fitAll() {
     if (!st.map) return;
@@ -207,7 +211,7 @@
     el.innerHTML = an.length ? an.map((a) => {
       const s = a.s, isSel = s.key === st.sel;
       return `<li><button class="storm-row ${isSel ? 'sel' : ''}" data-key="${H.esc(s.key)}" aria-pressed="${isSel}">
-        <span class="sdot" style="background:${Lb.ssColor(a.cur.vmax)}"></span>
+        ${Lb.catNum(a.cur.vmax) ? `<span class="storm-ico mini">${Lb.stormIcon(a.cur.vmax, a.south, 26)}</span>` : `<span class="sdot" style="background:${Lb.ssColor(a.cur.vmax)}"></span>`}
         <span class="s-name"><b>${H.esc(s.name)}</b><small>${H.esc(s.classText || Lb.ssCat(a.cur.vmax)[1])} · ${H.esc(s.basinName || s.basin || '')}</small></span>
         <span class="s-int">${H.esc(H.fW((s.vmaxKt || 0) * Lb.KT))} ${H.esc(H.wU())}<small>${s.pressure ? `${H.esc(H.fPr(s.pressure))} ${H.esc(H.prU())}` : ''}</small></span>
         <span class="s-dist">${H.esc(H.fD(a.dNow))}<small>${thr[a.level] ? `<em class="thr t-${a.level}">${thr[a.level]}</em>` : H.dirName(Lb.bearing(loc.lat, loc.lon, a.cur.lat, a.cur.lon))}</small></span>
@@ -292,7 +296,7 @@
     if (!st.analyses.some((a) => a.s.key === key)) return;
     st.sel = key; st.userSel = true;
     if (zoom) st.fitKey = null;                                           // re-fit even if this storm was already picked
-    renderList(); draw(); renderSelected();
+    safe('list', renderList); safe('map', draw); safe('detail', renderSelected);
   }
   function setFull(on) {
     st.full = on;
@@ -304,11 +308,13 @@
   }
 
   /* ----------------------------------------------------------------- API */
+  /** one part failing (e.g. the map library) must not take the list, detail card or the caller down with it */
+  function safe(name, fn) { try { fn(); } catch (e) { console.error(`SkyPulse: cyclone tracker ${name}`, e); } }
   function update(o) {
     Object.assign(st, o);
     if (!st.userSel || !st.analyses.some((a) => a.s.key === st.sel)) { st.sel = st.threat?.s.key || null; st.userSel = false; }
-    setupSlider();
-    renderList(); draw(); renderSelected();
+    safe('slider', setupSlider);
+    safe('list', renderList); safe('map', draw); safe('detail', renderSelected);
   }
   /** call when the panel becomes visible (tab switch, layout change) */
   function refresh() {

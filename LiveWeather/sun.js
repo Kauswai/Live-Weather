@@ -102,6 +102,50 @@
     };
   }
 
+  /** Day length (h) and noon sun angle (°) for every day of a year, plus the days worth marking on a chart:
+   *  dayMarks — start and end of the midnight sun and of the polar night where they occur, else the longest and
+   *             shortest day; elMarks — every turning point of the noon sun angle ({ k, max, big }), so the tropics
+   *             get both zenith passages and both solstice lows, with the year's highest/lowest drawn larger. */
+  function year(jan1, nDays, lat, lon, off) {
+    const H = 3600000, dl = [], el = [], dec = [];
+    for (let k = 0; k < nDays; k++) { const t = times(jan1 + k * DAY, lat, lon, off); dl.push(Math.max(0, Math.min(24, t.dayLen / H))); el.push(t.maxEl); dec.push(t.decl); }
+    // tropics: the sun is overhead on the day(s) the declination crosses the latitude. Noon sampling can
+    // miss the exact crossing by up to ~0.2°, so those days are pinned to 90°.
+    const zenith = [];
+    if (Math.abs(lat) <= 23.45) for (let k = 0; k < nDays - 1; k++) {
+      if ((dec[k] - lat) * (dec[k + 1] - lat) <= 0) { const z = Math.abs(dec[k] - lat) <= Math.abs(dec[k + 1] - lat) ? k : k + 1; if (!zenith.includes(z)) zenith.push(z); }
+    }
+    const elRaw = el.slice();                                    // before pinning: ranks the two zenith days
+    zenith.forEach((z) => { el[z] = 90; });
+    const arg = (a, better) => a.reduce((b, v, k) => (better(v, a[b]) ? k : b), 0);
+    const iMin = arg(dl, (a, b) => a < b), iMax = arg(dl, (a, b) => a > b);
+    // midnight-sun / polar-night periods as runs of days; a run cut by New Year is not a real start or end
+    const runs = (test) => {
+      const out = []; let s0 = null;
+      for (let k = 0; k <= nDays; k++) {
+        if (k < nDays && test(dl[k])) { if (s0 == null) s0 = k; } else if (s0 != null) { out.push([s0, k - 1]); s0 = null; }
+      }
+      return out;
+    };
+    const sunRuns = runs((v) => v >= 23.99), nightRuns = runs((v) => v <= 0.01);
+    const edgesOf = (rs) => rs.flatMap(([a, b]) => [a > 0 ? a : null, b < nDays - 1 ? b : null]).filter((k) => k != null);
+    /** [first, last] day of a period, joining the two halves of one that spans New Year */
+    const spanOf = (rs) => (!rs.length ? null : rs.length > 1 && rs[0][0] === 0 && rs[rs.length - 1][1] === nDays - 1 ? [rs[rs.length - 1][0], rs[0][1]] : [rs[0][0], rs[rs.length - 1][1]]);
+    const dayMarks = [...new Set([...(sunRuns.length ? edgesOf(sunRuns) : [iMax]), ...(nightRuns.length ? edgesOf(nightRuns) : [iMin])])];
+    const elMarks = [];
+    for (let k = 1; k < nDays - 1; k++) {
+      if (el[k] > el[k - 1] && el[k] >= el[k + 1]) elMarks.push({ k, max: true });
+      else if (el[k] < el[k - 1] && el[k] <= el[k + 1]) elMarks.push({ k, max: false });
+    }
+    const top = elMarks.filter((m) => m.max).reduce((b, m) => (!b || elRaw[m.k] > elRaw[b.k] ? m : b), null);
+    const low = elMarks.filter((m) => !m.max).reduce((b, m) => (!b || el[m.k] < el[b.k] ? m : b), null);
+    elMarks.forEach((m) => { m.big = m === top || m === low; });
+    return {
+      dl, el, zenith, dayMarks, elMarks, sunSpan: spanOf(sunRuns), nightSpan: spanOf(nightRuns),
+      iMin, iMax, iElMin: arg(el, (a, b) => a < b), iElMax: arg(el, (a, b) => a > b),
+    };
+  }
+
   /** Name of the light phase for a given apparent elevation. */
   function phase(el) {
     if (el >= 6) return 'Daylight';
@@ -112,5 +156,5 @@
     return 'Night';
   }
 
-  window.Solar = { solar, position, times, phase, DAY };
+  window.Solar = { solar, position, times, year, phase, DAY };
 })();

@@ -49,3 +49,6 @@ All of these were implemented independently for SkyPulse from published equation
   thresholds, and NHC's published average track errors.
 - **Typical intensity error band** (`storms.js`): approximate multi-year averages of official intensity-forecast errors.
   It is labelled in the app as a guide, not as an official product.
+- **Sky colour** (`sky.js`): SkyPulse's own rules, based on textbook atmospheric optics: Rayleigh and aerosol (Mie)
+  scattering, hygroscopic growth of aerosols, and the longer light path at low sun angles. The Saffir–Simpson colour
+  ramp used for storm symbols is SkyPulse's own choice of colours.

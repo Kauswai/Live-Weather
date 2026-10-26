@@ -306,7 +306,9 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .st-year .yr-line { fill: none; stroke: var(--accent); stroke-width: 2; }
 .st-year .yr-today { stroke: #ffd166; stroke-width: 1.5; }
 .st-year .yr-dot { fill: #ffd166; stroke: #0c1a3a; stroke-width: 2; }
-.st-year .yr-ext { fill: var(--accent); }
+.st-year .yr-ext { fill: #7cc4ff; stroke: #0c1a3a; stroke-width: 1.5; }
+.st-year .yr-el-ext { stroke: #0c1a3a; stroke-width: 1.2; }
+.st-year .yr-el-ext.big { stroke: #fff; stroke-width: 1.5; }
 
 /* ---------- Chart ---------- */
 .chart-legend-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
@@ -571,7 +573,7 @@ main[aria-busy="true"] .tiles:empty { min-height: 150px; border-radius: var(--ra
   .tabbar .badge.dot { min-width: 9px; width: 9px; height: 9px; padding: 0; top: 5px; background: var(--accent); }
   .tabbar .badge.amber { background: #ff9f43; color: #1f0d00; }
 
-  .ptr { display: grid; place-items: center; position: fixed; top: calc(58px + env(safe-area-inset-top)); left: 50%; z-index: 25; width: 38px; height: 38px; margin-left: -19px; border-radius: 50%; background: rgba(14,22,44,.95); border: 1px solid var(--stroke); box-shadow: var(--shadow); transform: translateY(-60px); opacity: 0; transition: opacity .2s; }
+  .ptr { pointer-events: none; display: grid; place-items: center; position: fixed; top: calc(58px + env(safe-area-inset-top)); left: 50%; z-index: 25; width: 38px; height: 38px; margin-left: -19px; border-radius: 50%; background: rgba(14,22,44,.95); border: 1px solid var(--stroke); box-shadow: var(--shadow); transform: translateY(-60px); opacity: 0; transition: opacity .2s; }
   .ptr span { width: 18px; height: 18px; border-radius: 50%; border: 2px solid rgba(255,255,255,.2); border-top-color: var(--accent); }
   .ptr.spin span { animation: spin .8s linear infinite; }
   .gate { padding-bottom: 80px; }
@@ -611,8 +613,11 @@ body.map-full { overflow: hidden; }
 body.map-full .storms-panel { backdrop-filter: none; -webkit-backdrop-filter: none; z-index: 80; }
 .storm-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 520px; overflow-y: auto; scrollbar-width: thin; }
 .sp-none { padding: 10px 4px; font-size: 13.5px; line-height: 1.5; }
-.storm-row { width: 100%; display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; grid-template-areas: "dot name dist" "dot int dist"; column-gap: 10px; row-gap: 2px; align-items: center; text-align: left; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--stroke); background: rgba(0,0,0,.14); color: var(--text); font: inherit; cursor: pointer; }
-.storm-row .sdot { grid-area: dot; }
+.storm-row { width: 100%; display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; grid-template-areas: "dot name dist" "dot int dist"; column-gap: 10px; row-gap: 2px; align-items: center; text-align: left; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--stroke); background: rgba(0,0,0,.14); color: var(--text); font: inherit; cursor: pointer; }
+.storm-row .sdot, .storm-row .storm-ico { grid-area: dot; justify-self: center; }
+.storm-ico.mini { display: inline-flex; vertical-align: middle; }
+.storm-ico.mini svg { filter: drop-shadow(0 0 3px rgba(0,0,0,.5)); }
+#tcTitle .storm-ico.mini { margin-right: -2px; }
 .storm-row .s-name { grid-area: name; min-width: 0; }
 .storm-row .s-int { grid-area: int; text-align: left; font-size: 12.5px; color: var(--muted); }
 .storm-row .s-int small { display: inline; margin-left: 6px; }
@@ -658,6 +663,14 @@ body.map-full .storms-panel { backdrop-filter: none; -webkit-backdrop-filter: no
 .golden-key { color: #ffb84d; }
 .empty-hint { text-align: center; font-size: 14px; color: var(--muted); }
 .tiles-none { grid-column: 1 / -1; text-align: center; padding: 12px; }
+.tile.sky-tile { grid-column: span 2; }
+.sky-row { display: grid; grid-template-columns: 54px 1fr; gap: 12px; align-items: start; margin-top: 2px; }
+.sky-swatch { width: 54px; height: 72px; border-radius: 12px; border: 1px solid rgba(255,255,255,.25); box-shadow: inset 0 0 0 1px rgba(0,0,0,.15); }
+.sky-title { font-size: 17px; font-weight: 600; line-height: 1.25; }
+.sky-text { margin: 4px 0 0; font-size: 13px; line-height: 1.45; color: var(--text); }
+.sky-text.sky-note { color: var(--muted); }
+.sky-factors { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.sky-factors span { font-size: 11px; padding: 2px 7px; border-radius: 999px; background: rgba(255,255,255,.08); color: var(--muted); }
 
 /* =====================================================================
    Settings sheet
