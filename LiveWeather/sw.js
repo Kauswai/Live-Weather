@@ -1,6 +1,6 @@
 /* SkyPulse service worker: offline app shell (all libraries are self-hosted), network-first cyclone feed.
  * Weather APIs and map tiles are never cached here; the app keeps its own short-lived weather cache. */
-const VERSION = 'skypulse-v11';
+const VERSION = 'skypulse-v12';
 const SHELL = [
   './', 'index.html', 'styles.css', 'guard.js', 'app.js', 'icons.js', 'settings.js', 'cache.js', 'sun.js', 'fx.js', 'pulse.js', 'sky.js', 'hazards.js', 'storms.js', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon.svg',

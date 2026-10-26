@@ -156,8 +156,10 @@
     const uvLv = uvMax >= 11 ? 2 : uvMax >= 8 ? 1 : 0;
     if (uvLv) add('uv', uvLv, 30, uvLv >= 2 ? 'Extreme UV — avoid the midday sun' : 'Very strong sun — sunscreen and a hat', `UV index up to ${uvMax.toFixed(0)} in this window.`, 'sun');
     // warnings
-    const topOff = official.slice().sort((a, b) => LV[b.level] - LV[a.level])[0];
-    const offLv = topOff ? { red: 5, orange: 4, yellow: 2, info: 0 }[topOff.level] : 0;
+    // an alert for other districts of your state (local === false) counts here as an advisory at most
+    const lvHere = (w) => (w.local === false && LV[w.level] > LV.yellow ? 'yellow' : w.level);
+    const topOff = official.slice().sort((a, b) => LV[lvHere(b)] - LV[lvHere(a)])[0];
+    const offLv = topOff ? { red: 5, orange: 4, yellow: 2, info: 0 }[lvHere(topOff)] : 0;
     if (offLv) add('official', offLv, 90, offLv >= 5 ? 'Dangerous weather — follow official advice' : offLv >= 4 ? 'Official warning — avoid going out if you can' : 'Official advisory in effect',
       `${topOff.agency || 'Official'}: ${topOff.title}.${topOff.text ? ' ' + topOff.text : ''}`, offLv >= 5 ? 'home' : 'alert');
     const topDer = derived.slice().sort((a, b) => LV[b.level] - LV[a.level])[0];

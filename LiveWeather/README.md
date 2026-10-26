@@ -87,7 +87,7 @@ The successor to the umbrella advisor. It looks at every hour, and every 15-minu
 | Feels-like cold | ≤ 0 / −10 / −20 / −28 / −35 °C → 1–5 | Dress in layers … Dangerous cold — stay indoors |
 | Visibility | < 1000 m → 1, < 200 m → 3 | Mist · Dense fog |
 | US AQI / UV | ≥ 101/151/201/301 → 1–4; UV ≥ 8 → 1, ≥ 11 → 2 | Limit exertion / mask · Sunscreen |
-| Warnings overlapping the window | official red / orange / yellow → 5 / 4 / 2; SkyPulse flood, surf, cyclone or surge red / orange / yellow → 4 / 3 / 1 | Follow official advice |
+| Warnings overlapping the window | official red / orange / yellow → 5 / 4 / 2 (an alert matched only to your state counts as yellow at most; a GDACS rating is first scaled to the winds expected at your location); SkyPulse flood, surf, cyclone or surge red / orange / yellow → 4 / 3 / 1 | Follow official advice |
 
 - **Profiles:** *Sensitive* lowers the heat thresholds by 3 °C, raises the cold ones by 5 °C, scales gusts by 0.85 and adds a level for poor air. *Hardy* goes the other way.
 - **The card shows:**
@@ -243,7 +243,7 @@ Each storm also links to your national service (about 50 countries, matched by c
   - inside the NHC or IMD cone;
   - inside IMD's 28/34/50/64-kt areas;
   - inside JMA's gale or storm area now, or in a forecast storm-warning area;
-  - a GDACS alert for your country.
+  - a GDACS alert for your country. GDACS rates the whole storm's humanitarian impact (Red: many people exposed to hurricane-force winds somewhere), not conditions at your point. It is listed as "(whole storm)" and counts no higher than the winds forecast here: red only with hurricane-force winds, orange with gale-force winds, yellow within 150 km of the track without gales, and otherwise information only.
 - **SkyPulse forecast hazards (next 48–72 h):**
 
   | Hazard | Yellow / orange / red |

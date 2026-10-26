@@ -357,7 +357,7 @@
     });
     if (u.threat) {
       const th = u.threat, lvTxt = { direct: 'direct threat', near: 'close pass', watch: 'approaching' }[th.level];
-      rows.push(`<li class="pa lv-${th.level === 'direct' ? 'red' : th.level === 'near' ? 'orange' : 'yellow'}"><span class="pa-ico" aria-hidden="true">🌀</span><div><button class="linkish" data-goto-storm="${esc(th.s.key)}"><b>${esc(th.s.classText || 'Tropical cyclone')} ${esc(th.s.name)}: ${lvTxt}</b></button><small>Closest approach ${esc(fD(th.cpa.dKm))} · ${esc(fmtDay(th.cpa.t))} ${esc(fmtHM(th.cpa.t))}</small></div></li>`);
+      rows.push(`<li class="pa lv-${th.hu ? 'red' : th.ts ? 'orange' : 'yellow'}"><span class="pa-ico" aria-hidden="true">🌀</span><div><button class="linkish" data-goto-storm="${esc(th.s.key)}"><b>${esc(th.s.classText || 'Tropical cyclone')} ${esc(th.s.name)}: ${lvTxt}</b></button><small>Closest approach ${esc(fD(th.cpa.dKm))} · ${esc(fmtDay(th.cpa.t))} ${esc(fmtHM(th.cpa.t))}</small></div></li>`);
     }
     const agency = typeof Hazards !== 'undefined' ? Hazards.localAgency(S.loc?.cc, S.loc) : null;
     const link = agency && safeUrl(agency.url);
@@ -1249,7 +1249,8 @@
     badge.classList.toggle('amber', !w.some((x) => LVN[x.level] >= 2));
     $('#stormBadge').hidden = !hz.threat;
     hz.warnings.forEach((x) => {
-      if (LVN[x.level] >= 2 || x.source === 'official') once('w-' + x.id + x.level, () => feed(LVN[x.level] >= 2 ? 'warn' : 'alert', x.icon || '⚠️', `${x.source === 'official' ? 'Official' : 'Forecast'} ${x.level} warning — ${x.title}. ${x.text}`));
+      const what = { red: 'red warning', orange: 'orange alert', yellow: 'yellow advisory', info: 'notice' }[x.level] || 'warning';
+      if (LVN[x.level] >= 2 || x.source === 'official') once('w-' + x.id + x.level, () => feed(LVN[x.level] >= 2 ? 'warn' : 'alert', x.icon || '⚠️', `${x.source === 'official' ? 'Official' : 'Forecast'} ${what} — ${x.title}. ${x.text}`));
     });
     const th = hz.threat;
     if (th) once(`tc-${th.s.key}-${th.level}`, () => feed('warn', '🌀', () => `${th.s.classText || 'Tropical cyclone'} ${th.s.name}: ${th.level === 'direct' ? 'direct threat' : th.level === 'near' ? 'close pass' : 'approaching'} — now ${fD(th.dNow)} away; closest approach ${fD(th.cpa.dKm)} at ${fmtDay(th.cpa.t)} ${fmtHM(th.cpa.t)}.`));

@@ -433,7 +433,7 @@
     return list.map((a) => {
       // the issuing office (e.g. "IMD Jaipur") names a city, so districts are matched only against the alert's own area/headline
       const where = norm([a.area, a.headline, a.description].join(' '));
-      const local = finer.some((n) => where.includes(n));
+      const local = finer.some((n) => where.includes(n)) || norm(a.area) === state;   // a district match, or the whole state
       if (!local && !norm([a.sender, a.area, a.headline].join(' ')).includes(state)) return null;
       const lv = a.severity === 'Extreme' ? 'red' : a.severity === 'Severe' ? 'orange' : 'yellow';
       return { id: 'in-' + a.id, level: lv, icon: /cyclone|depression/i.test(a.event) ? '🌀' : /flood|rain/i.test(a.event) ? '🌊' : /thunder|lightning/i.test(a.event) ? '⚡' : /heat/i.test(a.event) ? '🥵' : '⚠️',
@@ -446,11 +446,19 @@
     return Object.values(d).filter((w) => w && typeof w === 'object').map((w) => ({ id: 'hko-' + w.code, level: /TC8|TC9|TC10|WRAINB|WRAINR/.test(w.code) ? 'red' : /TC3|WRAINA|WTS/.test(w.code) ? 'orange' : 'yellow', icon: String(w.code || '').startsWith('TC') ? '🌀' : '⚠️',
       kind: 'official', title: w.name + (w.type ? ` (${w.type})` : ''), start: Date.parse(w.issueTime), end: null, text: `${w.actionCode === 'CANCEL' ? 'Cancelled' : 'In force'} since ${H.fmtHM(Date.parse(w.issueTime))}`, source: 'official', agency: 'Hong Kong Observatory' }));
   }
+  /** GDACS rates a whole storm's humanitarian impact per country (Red: many people exposed to hurricane-force winds
+   *  somewhere in it). That is not a warning for this point, so here it counts no higher than the winds forecast here. */
   function gdacsWarnings(ctx, threat) {
     const g = threat?.s?.gdacs; if (!g || !ctx.countryName || !(threat.level === 'direct' || threat.level === 'near')) return [];
     if (!Array.isArray(g.countries) || !g.countries.some((c) => norm(c) === norm(ctx.countryName))) return [];
-    const lv = g.alertLevel === 'Red' ? 'red' : g.alertLevel === 'Orange' ? 'orange' : 'yellow';
-    return [{ id: 'gdacs-' + g.eventId, level: lv, icon: '🌐', kind: 'official', title: `GDACS ${g.alertLevel} alert: ${threat.s.name}`, start: null, end: null, text: `${g.severity || ''} — affected: ${(g.countries || []).join(', ')}.`, source: 'official', agency: 'GDACS (UN/EC)', link: g.report }];
+    const storm = g.alertLevel === 'Red' ? 'red' : g.alertLevel === 'Orange' ? 'orange' : 'yellow';
+    const here = threat.hu ? 'red' : threat.ts ? 'orange' : threat.level === 'direct' ? 'yellow' : 'info';
+    const lv = LV[storm] <= LV[here] ? storm : here;
+    const d = H.fD(threat.cpa.dKm);
+    const why = lv === storm ? '' : here === 'orange' ? ` Gale-force winds are possible here, but not the hurricane-force winds this rating is based on.`
+      : ` This rates the storm's overall impact, not your location: its closest approach is ${d} away and gale-force winds are not expected here.`;
+    return [{ id: 'gdacs-' + g.eventId, level: lv, icon: '🌐', kind: 'official', title: `GDACS ${g.alertLevel} alert for ${threat.s.name} (whole storm)`, start: null, end: null,
+      text: `${g.severity || ''} — countries affected: ${g.countries.join(', ')}.${why}`, source: 'official', agency: 'GDACS (UN/EC)', link: g.report, scope: 'storm' }];
   }
 
   /* --------------------------------------------------------------- render */

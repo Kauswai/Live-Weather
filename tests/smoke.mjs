@@ -45,7 +45,7 @@ async function route(ctx, sc, hits) {
     hits[u.host] = (hits[u.host] || 0) + 1;
     const json = (body) => r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(body) });
     if (u.host === `127.0.0.1:${PORT}`) {
-      if (u.pathname.endsWith('/data/tropical.json')) return json(F.tropical(sc.wx));
+      if (u.pathname.endsWith('/data/tropical.json')) return json(F.tropical(sc.tc || sc.wx));
       return r.continue();
     }
     switch (u.host) {
@@ -237,6 +237,24 @@ if (!ONLY || ONLY === 'resilience') {
     if (moves) fail(`location jitter counted as ${moves} move(s)`);
     await ctx.setGeolocation({ latitude: place.lat + 0.2, longitude: place.lon, accuracy: 30 }); await page.waitForTimeout(800);
     if (!(await page.locator('#feed li', { hasText: /moved|refined/ }).count())) fail('a precise fix 22 km away was ignored');
+    problems.forEach(fail);
+    await ctx.close();
+  }
+  // a storm rated Red by GDACS for the whole country, passing ~450 km away without gales here, is not "dangerous weather" here;
+  // an alert for other districts of the state counts as an advisory at most
+  {
+    console.log('▶ distant cyclone with a country-wide Red rating');
+    const far = { name: 'medchal-bay', place: 'medchal', wx: 'calm', tc: 'bay' };
+    const { ctx, page, problems } = await newPage(browser, far, 'desktop', {});
+    await page.goto(BASE);
+    await ready(page);
+    await page.waitForFunction(() => /GDACS/.test(document.querySelector('#warnList')?.textContent || ''), null, { timeout: 8000 }).catch(() => fail('GDACS rating not listed'));
+    const lvl = parseInt(await page.locator('#pulseLevel').textContent(), 10);
+    if (!(lvl <= 2)) fail(`Pulse level ${lvl}/5 for a storm ~450 km away: ${await page.locator('#pulseVerdict').textContent()}`);
+    if (/Dangerous weather/.test(await page.locator('#pulseCard').textContent())) fail('distant storm reported as dangerous weather');
+    if (!(await page.locator('#warnList .warn.lv-info', { hasText: 'GDACS Red alert for Dana (whole storm)' }).count())) fail('GDACS rating not shown as storm-wide information');
+    if (!(await page.locator('#warnList .warn', { hasText: 'Heavy Rain (in your state)' }).count())) fail('state alert not listed');
+    await page.screenshot({ path: join(OUT, 'distant-cyclone.png'), fullPage: false });
     problems.forEach(fail);
     await ctx.close();
   }

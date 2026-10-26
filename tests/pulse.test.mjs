@@ -60,6 +60,10 @@ check('official + same-level hazard → specific advice', merged, 4, /Extreme he
 if (!/Official warning in force — IMD: Heat Wave/.test(merged.detail)) { failed++; console.log('✗ merged detail does not cite the official warning: ' + merged.detail); }
 const future = { warnings: [{ source: 'official', level: 'red', title: 'Later warning', agency: 'NWS', start: now + 20 * HOUR, end: now + 30 * HOUR, kind: 'official' }], tcWindowKt: () => 0 };
 check('warning outside the window is ignored', run(data(), { hz: future }), 0, /No umbrella/);
+const elsewhere = { warnings: [{ source: 'official', level: 'red', title: 'Heavy Rain (in your state)', agency: 'IMD', start: now - HOUR, end: now + 9 * HOUR, kind: 'official', local: false }], tcWindowKt: () => 0 };
+check('red alert for other districts of the state → advisory', run(data(), { hz: elsewhere }), 2, /Official advisory/);
+const stormWide = { warnings: [{ source: 'official', level: 'info', title: 'GDACS Red alert for Arnab (whole storm)', agency: 'GDACS (UN/EC)', start: null, end: null, kind: 'official', scope: 'storm' }], tcWindowKt: () => 0 };
+check('storm-wide rating with no winds here', run(data(), { hz: stormWide }), 0, /No umbrella/);
 const sunGear = run(data(() => ({ uv: 9 })));
 if (!sunGear.gear.some((g) => g.label === 'Sunscreen')) { failed++; console.log('✗ strong UV should suggest sunscreen'); }
 const stormGear = run(data(() => ({ uv: 9, pp: 90, pr: 30, wc: 65 })));

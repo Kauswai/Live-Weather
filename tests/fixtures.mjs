@@ -16,6 +16,7 @@ export const PLACES = {
   miami: { lat: 25.7617, lon: -80.1918, tz: 'America/New_York', abbr: 'EDT', city: 'Miami', sub: 'Florida', cc: 'US', country: 'United States of America', elev: 2 },
   delhi: { lat: 28.6139, lon: 77.209, tz: 'Asia/Kolkata', abbr: 'IST', city: 'New Delhi', sub: 'Delhi', cc: 'IN', country: 'India', elev: 216 },
   tokyo: { lat: 35.6762, lon: 139.6503, tz: 'Asia/Tokyo', abbr: 'JST', city: 'Tokyo', sub: 'Tokyo', cc: 'JP', country: 'Japan', elev: 40 },
+  medchal: { lat: 17.63, lon: 78.481, tz: 'Asia/Kolkata', abbr: 'IST', city: 'Medchal', sub: 'Telangana', cc: 'IN', country: 'India', elev: 590 },
 };
 
 /** weather "shape" per scenario: functions of hours-from-now (h) and local hour (lh) */
@@ -203,13 +204,17 @@ export function tropical(scenario) {
   const ep = trackPts(t0, 14.5, -118.0, 0.4, -1.1, 145, -8, 7, 12);
   const lane = { source: 'NHC', id: 'ep182026', name: 'Lane', basin: 'EP', classCode: 'HU', classText: 'Hurricane', time: ep[0].time, lat: ep[0].lat, lon: ep[0].lon, vmaxKt: 145, gustKt: 175, pressure: 922,
     moveDir: 290, moveKt: 9, windAvg: '1-min', radii: ep[0].radii, forecast: ep.slice(1), basinName: 'Eastern North Pacific', official: { code: 'NHC', name: 'NOAA National Hurricane Center (RSMC Miami)', url: 'https://www.nhc.noaa.gov/', dataFrom: 'NHC' }, key: 'EP-LANE', alt: [] };
-  const io = trackPts(t0, 15.5, 88.0, 0.5, -0.4, 70, 2, 6, 12);
+  // "bay": a severe cyclone making landfall on the Andhra coast ~450 km from Medchal, rated Red for India by GDACS
+  const io = scenario === 'bay' ? trackPts(t0, 13.5, 86.5, 0.6, -0.8, 95, 0, 6, 12) : trackPts(t0, 15.5, 88.0, 0.5, -0.4, 70, 2, 6, 12);
   const dana = { source: 'JTWC', id: 'io052026', name: 'Dana', basin: 'IO', subBasin: 'B', classText: 'Very Severe Cyclonic Storm', time: io[0].time, lat: io[0].lat, lon: io[0].lon, vmaxKt: 70, gustKt: 85, pressure: 970,
-    moveDir: 330, moveKt: 8, windAvg: '1-min', radii: io[0].radii, forecast: io.slice(1), basinName: 'North Indian Ocean (Bay of Bengal)', official: { code: 'IMD', name: 'India Meteorological Department (RSMC New Delhi)', url: 'https://rsmcnewdelhi.imd.gov.in/', dataFrom: 'JTWC' }, key: 'IO-DANA', alt: [] };
+    moveDir: 330, moveKt: 8, windAvg: '1-min', radii: io[0].radii, forecast: io.slice(1), basinName: 'North Indian Ocean (Bay of Bengal)', official: { code: 'IMD', name: 'India Meteorological Department (RSMC New Delhi)', url: 'https://rsmcnewdelhi.imd.gov.in/', dataFrom: 'JTWC' }, key: 'IO-DANA', alt: [],
+    ...(scenario === 'bay' ? { gdacs: { eventId: 1002, alertLevel: 'Red', severity: 'Hurricane/Typhoon > 74 mph (maximum wind speed of 204 km/h)', countries: ['India'], report: 'https://www.gdacs.org/report.aspx?eventid=1002', images: {} } } : {}) };
   return {
     generated: iso(now - 12 * 60e3), status: { NHC: { ok: true }, JMA: { ok: true }, JTWC: { ok: true } },
     storms: [kirk, kong, zelia, lane, dana], gdacs: [],
-    india: { source: 'NDMA SACHET (CAP)', alerts: scenario === 'heat' ? [{ id: 'in1', sender: 'IMD New Delhi', event: 'Heat Wave', severity: 'Severe', onset: iso(now - HOUR), expires: iso(now + DAY), headline: 'Severe heat wave over Delhi', description: 'Heat wave conditions very likely.', instruction: 'Avoid sun exposure.', area: 'New Delhi, Delhi', issuer: 'IMD' }] : [] },
+    india: { source: 'NDMA SACHET (CAP)', alerts: scenario === 'bay' ? [{ id: 'in2', sender: 'IMD Hyderabad', event: 'Heavy Rain', severity: 'Severe', onset: iso(now), expires: iso(now + DAY),
+      headline: 'Heavy to very heavy rain at isolated places over Bhadradri Kothagudem and Khammam districts of Telangana', description: 'Heavy rain very likely.', instruction: 'Avoid low-lying areas.', area: 'Bhadradri Kothagudem, Khammam', issuer: 'IMD' }]
+      : scenario === 'heat' ? [{ id: 'in1', sender: 'IMD New Delhi', event: 'Heat Wave', severity: 'Severe', onset: iso(now - HOUR), expires: iso(now + DAY), headline: 'Severe heat wave over Delhi', description: 'Heat wave conditions very likely.', instruction: 'Avoid sun exposure.', area: 'New Delhi, Delhi', issuer: 'IMD' }] : [] },
   };
 }
 
