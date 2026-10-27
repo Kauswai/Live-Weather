@@ -167,15 +167,23 @@
   });
   const searchURL = (q) => 'https://geocoding-api.open-meteo.com/v1/search?' + new URLSearchParams({ name: q, count: 7, language: 'en', format: 'json' });
 
+  /** a search result's region; Antarctic places (south of 60° S) often come without a country */
+  const countryOf = (r) => r.country || (r.country_code === 'AQ' || r.latitude <= -60 ? 'Antarctica' : '');
+  const stationNear = (lat, lon) => (typeof Stations !== 'undefined' ? Stations.nearest(lat, lon, 30) : null);
+
   async function reverseGeocode(loc) {
+    // at a research station, name it after the station (no request needed)
+    const st = stationNear(loc.lat, loc.lon);
+    if (st) return { name: st.name, sub: [st.admin1, st.country].filter(Boolean).join(', '), cc: st.country_code, country: st.country, admins: [st.name] };
     const r = await getJSON(reverseURL(loc), 8000);
-    const name = r.city || r.locality || r.principalSubdivision || r.countryName;
+    const country = r.countryName || (loc.lat <= -60 ? 'Antarctica' : '');
+    const name = r.city || r.locality || r.principalSubdivision || country;
     if (!name) return null;
-    const sub = [r.city && r.locality && r.locality !== r.city ? r.locality : null, r.principalSubdivision, r.countryName].filter(Boolean).join(', ');
+    const sub = [r.city && r.locality && r.locality !== r.city ? r.locality : null, r.principalSubdivision, country].filter((x) => x && x !== name).join(', ');
     // finest → coarsest, state last: used to match local (district/state) warnings
     const adm = (r.localityInfo?.administrative || []).filter((a) => a.adminLevel > 4 && a.name).sort((a, b) => b.adminLevel - a.adminLevel).map((a) => a.name);
     const admins = [...new Set([r.city, r.locality, ...adm, r.principalSubdivision].filter(Boolean))];
-    return { name, sub, cc: r.countryCode, country: r.countryName, admins };
+    return { name, sub, cc: r.countryCode || (loc.lat <= -60 ? 'AQ' : undefined), country, admins };
   }
 
   /* ---------------- data processing ---------------- */
@@ -1214,7 +1222,7 @@
       const [fc, aq, place] = await Promise.all([
         fetchForecast(loc, mode),
         fetchAQ(loc),
-        loc.name && loc.cc ? null : reverseGeocode(loc).catch(() => null),
+        loc.source === 'search' || (loc.name && loc.cc) ? null : reverseGeocode(loc).catch(() => null),   // never rename a searched place
       ]);
       if (token !== S.fetchToken) return; // superseded by a newer request
       if (place) Object.assign(loc, place);
@@ -1421,14 +1429,24 @@
   const input = $('#searchInput'), list = $('#searchResults');
   function renderResults() {
     list.hidden = !results.length;
-    list.innerHTML = results.map((r, k) => `<li role="option" data-k="${k}" class="${k === active ? 'active' : ''}"><span>${esc(r.name)}</span><small>${esc([r.admin1, r.country].filter(Boolean).join(', '))}</small></li>`).join('');
+    list.innerHTML = results.map((r, k) => `<li role="option" data-k="${k}" class="${k === active ? 'active' : ''}${r.station ? ' station' : ''}"><span>${esc(r.name)}</span><small>${esc([r.admin1, countryOf(r)].filter(Boolean).join(', '))}</small></li>`).join('');
+  }
+  /** GeoNames places named exactly as typed first, then matching research stations, then the rest. A GeoNames entry
+   *  for one of those stations (within 30 km) is dropped in favour of the labelled one. */
+  function mergeResults(q, remote, local) {
+    const nq = Stations.norm(q);
+    const ok = remote.filter((r) => r && num(r.latitude) && num(r.longitude)
+      && !local.some((st) => haversine({ lat: r.latitude, lon: r.longitude }, { lat: st.latitude, lon: st.longitude }) < 30));
+    const exact = ok.filter((r) => Stations.norm(r.name) === nq);
+    return [...exact, ...local, ...ok.filter((r) => !exact.includes(r))].slice(0, 9);
   }
   function pick(r) {
     if (!r || !num(r.latitude) || !num(r.longitude)) return;
     stopGPS(); S.mode = 'manual';
     input.value = ''; results = []; renderResults(); input.blur();
-    setLocation({ lat: r.latitude, lon: r.longitude, name: r.name, sub: [r.admin1, r.country].filter(Boolean).join(', '), source: 'search',
-      cc: r.country_code, country: r.country, admins: [...new Set([r.name, r.admin4, r.admin3, r.admin2, r.admin1].filter(Boolean))] }, `Switched to ${r.name}${r.country ? ', ' + r.country : ''}`);
+    const country = countryOf(r);
+    setLocation({ lat: r.latitude, lon: r.longitude, name: r.name, sub: [r.admin1, country].filter(Boolean).join(', '), source: 'search',
+      cc: r.country_code || (country === 'Antarctica' ? 'AQ' : undefined), country, admins: [...new Set([r.name, r.admin4, r.admin3, r.admin2, r.admin1].filter(Boolean))] }, `Switched to ${r.name}${country ? ', ' + country : ''}`);
     document.body.classList.remove('search-open');
     hideGate();
   }
@@ -1438,13 +1456,16 @@
     if (q.length < 2) { results = []; renderResults(); return; }
     searchTimer = setTimeout(async () => {
       const seq = ++searchSeq, key = q.toLowerCase();
+      const local = typeof Stations !== 'undefined' ? Stations.search(q) : [];   // research stations work offline too
+      let remote = [], err = null;
       try {
         const r = searchMemo.get(key) || await getJSON(searchURL(q), 8000);
         if (!searchMemo.has(key)) { searchMemo.set(key, r); if (searchMemo.size > 40) searchMemo.delete(searchMemo.keys().next().value); }
-        if (seq !== searchSeq) return;
-        results = Array.isArray(r.results) ? r.results : []; active = results.length ? 0 : -1; renderResults();
-        if (!results.length) toast(`No places found for “${q}”`);
-      } catch (e) { toast('Search failed: ' + e.message); }
+        remote = Array.isArray(r.results) ? r.results : [];
+      } catch (e) { err = e; }
+      if (seq !== searchSeq) return;
+      results = local.length ? mergeResults(q, remote, local) : remote; active = results.length ? 0 : -1; renderResults();
+      if (!results.length) toast(err ? 'Search failed: ' + err.message : `No places found for “${q}”`);
     }, 300);
   });
   input.addEventListener('keydown', (e) => {

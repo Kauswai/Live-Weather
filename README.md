@@ -52,6 +52,7 @@ Live-Weather/
 │   ├── fx.js                 canvas precipitation and storm effects
 │   ├── sun.js                solar position, sunrise/sunset/twilight maths (NOAA equations), year-chart markers
 │   ├── sky.js                sky colour and shade commentary
+│   ├── stations.js           key polar / remote research stations for search
 │   ├── icons.js              animated SVG weather icons, Pulse glyphs, WMO weather-code names
 │   ├── manifest.webmanifest  PWA manifest       sw.js  service worker (offline shell)
 │   ├── vendor/               Chart.js, Leaflet and the Inter font, self-hosted with their licences
@@ -101,7 +102,7 @@ GitHub pauses scheduled workflows in repositories with no activity for 60 days. 
   - [NDMA SACHET](https://sachet.ndma.gov.in/) CAP feed (IMD and the state disaster-management authorities);
   - [Hong Kong Observatory](https://www.hko.gov.hk/) open data.
 - **Maps:** [Leaflet](https://leafletjs.com/) 1.9.4 (BSD-2, self-hosted) with Esri World Dark Gray Canvas tiles (© Esri, © OpenStreetMap contributors).
-- **Place names:** [BigDataCloud](https://www.bigdatacloud.com/) for reverse geocoding; Open-Meteo Geocoding for search.
+- **Place names:** [BigDataCloud](https://www.bigdatacloud.com/) for reverse geocoding; Open-Meteo Geocoding for search, plus a built-in list of key polar research stations (public station positions).
 - **Sun position:** computed locally with the [NOAA Solar Calculator](https://gml.noaa.gov/grad/solcalc/calcdetails.html) equations.
 - **Charts:** [Chart.js](https://www.chartjs.org/) 4.4.1 (MIT, self-hosted). **Font:** [Inter](https://rsms.me/inter/) (SIL OFL 1.1, self-hosted).
 - Full list with licences: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

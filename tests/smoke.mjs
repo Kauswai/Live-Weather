@@ -263,6 +263,31 @@ if (!ONLY || ONLY === 'resilience') {
     problems.forEach(fail);
     await ctx.close();
   }
+  // research stations in search; Antarctic places labelled "Antarctica"; a page at the South Pole
+  {
+    console.log('▶ research stations in search');
+    const hits = {};
+    const { ctx, page, problems } = await newPage(browser, sc, 'desktop', hits);
+    await page.goto(BASE); await ready(page);
+    const find = async (q) => { await page.locator('#searchInput').fill(q); await page.waitForTimeout(700); return page.locator('#searchResults li').allTextContents(); };
+    let rows = await find('esperanza');
+    if (!rows.some((t) => /Esperanza Base.*Argentine station, Antarctica/.test(t))) fail('Esperanza Base not found: ' + JSON.stringify(rows));
+    if (!/Esperanza.*Mexico/.test(rows[0] || '')) fail('exact-name town should stay first: ' + JSON.stringify(rows));
+    rows = await find('vostok');
+    if (rows.filter((t) => /Vostok/.test(t)).length !== 1 || !/Vostok Station.*Antarctica/.test(rows[0])) fail('Vostok should appear once, labelled Antarctica: ' + JSON.stringify(rows));
+    rows = await find('mount erebus');
+    if (!rows.some((t) => /Mount Erebus\s*Antarctica$/.test(t))) fail('GeoNames Antarctic place without a country not labelled: ' + JSON.stringify(rows));
+    rows = await find('south pole');
+    if (!/Amundsen–Scott South Pole Station/.test(rows[0] || '')) fail('South Pole station not found: ' + JSON.stringify(rows));
+    await page.locator('#searchResults li').first().dispatchEvent('mousedown');
+    await page.waitForFunction(() => /Amundsen/.test(document.querySelector('#placeName').textContent), null, { timeout: 8000 }).catch(() => fail('South Pole not loaded'));
+    await page.waitForTimeout(1500);
+    if (!/United States station, Antarctica/.test(await page.locator('#placeSub').textContent())) fail('hero sub-line missing Antarctica: ' + await page.locator('#placeSub').textContent());
+    if (!/latitude=-89\.99/.test(hits.lastForecastURL || '')) fail('forecast not requested for the pole: ' + hits.lastForecastURL);
+    await page.screenshot({ path: join(OUT, 'south-pole.png'), fullPage: true });
+    problems.forEach(fail);
+    await ctx.close();
+  }
   // a saved GPS fix is reused at launch: no permission prompt unless the browser already allows location
   {
     console.log('▶ saved location on launch');

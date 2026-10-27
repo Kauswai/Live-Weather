@@ -129,6 +129,10 @@ export const search = (q) => ({
   results: [
     { name: 'Tokyo', latitude: 35.6895, longitude: 139.69171, country: 'Japan', country_code: 'JP', admin1: 'Tokyo' },
     { name: 'Berlin', latitude: 52.52437, longitude: 13.41053, country: 'Germany', country_code: 'DE', admin1: 'Land Berlin' },
+    // GeoNames lists Antarctic features without a country; "Esperanza" finds towns but not the base
+    { name: 'Vostok Station', latitude: -78.46445, longitude: 106.83728, country_code: 'AQ', feature_code: 'STNB' },
+    { name: 'Esperanza', latitude: 19.4833, longitude: -97.3833, country: 'Mexico', country_code: 'MX', admin1: 'Puebla' },
+    { name: 'Mount Erebus', latitude: -77.5297, longitude: 167.1467, feature_code: 'VLC' },
   ].filter((r) => r.name.toLowerCase().startsWith(q.toLowerCase().slice(0, 2))),
 });
 

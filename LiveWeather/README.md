@@ -10,6 +10,7 @@ A static site: plain HTML, CSS and JavaScript, with no build step. Chart.js, Lea
 | `app.js` | Location, forecast refresh with the on-device cache, units and clock, tiles, chart, 15-minute outlook, Pulse card, feed, sun tracker, scene/effect selection, tabs, gestures and PWA (one IIFE). |
 | `guard.js` | Loaded first. If anything throws before the first forecast is on screen, the location gate shows the error and its details, with *Reload* and *Clear saved data & reload*, instead of an endless spinner. |
 | `settings.js` | `Prefs`: one validated preferences object, the look, and the settings sheet. `Layout`: packs the visible sections into the grid in the user's order, and hides empty tabs. |
+| `stations.js` | `Stations`: about 60 key polar and remote research stations for the search, with aliases; `Stations.nearest()` names GPS fixes at a station. |
 | `cache.js` | `WxCache`: the last forecast, air quality and place name for up to 8 places, kept in `localStorage`. |
 | `pulse.js` | `Pulse.compute()`: the Pulse Advisor decision logic. A pure function, unit-tested in `../tests/pulse.test.mjs`. |
 | `hazards.js` | `Hazards`: cyclone threat analysis, coastline/marine probes, official and derived warnings, feed sanitising, the storm detail card, `localAgency()`, and geometry helpers (`Hazards.lib`). |
@@ -36,6 +37,8 @@ A static site: plain HTML, CSS and JavaScript, with no build step. Chart.js, Lea
    - it uses the last place saved in `localStorage` (`skypulse.lastLoc`);
    - otherwise it shows a gate offering a GPS retry or city search.
 5. Choosing a searched city switches to manual mode. The **Live GPS** button resumes tracking.
+   - **Research stations (`stations.js`):** the search (Open-Meteo geocoding, from GeoNames) lacks many polar stations, and lists Antarctic places without a country. About 60 key stations are built in: Antarctic ones such as Amundsen–Scott South Pole, McMurdo, Vostok, Esperanza, Marambio, Concordia, Rothera, Halley, Neumayer III, Casey, Davis, Syowa, Kunlun and Dome Fuji, plus sub-Antarctic and Arctic ones such as Summit (Greenland) and Villum. They match their names and aliases ("South Pole", "Dome C", "Hope Bay"…) and work offline. Places named exactly as typed stay first, then stations, then other matches; a GeoNames duplicate of a station is dropped.
+   - Places south of 60° S without a country are labelled **Antarctica**. A GPS fix within 30 km of a station is named after it. A searched place is never renamed by the reverse geocoder.
 6. **After a deploy:** if the browser still holds the previous release's page, it can load this release's `app.js` without the elements and modules it needs. `app.js` detects that, fetches the page fresh and reloads once per tab session.
 
 ### Data

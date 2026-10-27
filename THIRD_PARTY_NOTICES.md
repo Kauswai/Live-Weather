@@ -35,6 +35,9 @@ Used under each provider's own terms; the app footer and the cyclone card show t
 
   These are collected by `pipeline/fetch_tropical.py` or fetched live, and always credited to the issuing agency in the UI.
 
+- **Research station positions** (`stations.js`): published coordinates of national Antarctic and Arctic programme
+  stations (facts, not creative content), compiled for SkyPulse and rounded.
+
 ## Methods implemented from public descriptions
 
 All of these were implemented independently for SkyPulse from published equations or standard textbook algorithms.
