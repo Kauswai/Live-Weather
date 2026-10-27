@@ -25,12 +25,13 @@ const server = spawn('python3', ['-m', 'http.server', String(PORT), '--bind', '1
 await new Promise((r) => setTimeout(r, 900));
 const BASE = `http://127.0.0.1:${PORT}/`;
 
+// cond: the expected condition label, or a pattern it must not match
 const SCENARIOS = [
-  { name: 'nyc-calm', place: 'nyc', wx: 'calm' },
-  { name: 'berlin-rain', place: 'berlin', wx: 'rain' },
-  { name: 'miami-cyclone', place: 'miami', wx: 'cyclone' },
-  { name: 'delhi-heat', place: 'delhi', wx: 'heat' },
-  { name: 'tokyo-storm', place: 'tokyo', wx: 'storm' },
+  { name: 'nyc-calm', place: 'nyc', wx: 'calm', cond: /^(?!Stormy)/ },
+  { name: 'berlin-rain', place: 'berlin', wx: 'rain', cond: /^(?!Stormy)/ },
+  { name: 'miami-cyclone', place: 'miami', wx: 'cyclone', cond: /^Stormy$/ },
+  { name: 'delhi-heat', place: 'delhi', wx: 'heat', cond: /^(?!Stormy)/ },
+  { name: 'tokyo-storm', place: 'tokyo', wx: 'storm', cond: /^(?!Stormy)/ },
 ];
 const VIEWPORTS = { phone: { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 }, desktop: { viewport: { width: 1440, height: 1000 } } };
 const TABS = ['now', 'forecast', 'alerts', 'storms', 'sun', 'feed'];
@@ -90,6 +91,9 @@ for (const sc of SCENARIOS) {
     try { await page.waitForFunction(() => document.querySelector('#app')?.getAttribute('aria-busy') === 'false', null, { timeout: 15000 }); }
     catch { fail('app never finished loading'); }
     await page.waitForTimeout(1500);
+    const condTxt = await page.locator('#heroCond').textContent();
+    if (!sc.cond.test(condTxt)) fail(`condition shown as "${condTxt}"`);
+    if (sc.wx === 'storm' && !(await page.locator('#hourly .hour.stormy').count())) fail('severe-thunderstorm hours not marked stormy');
     for (const tab of TABS) {
       if (vp === 'phone') {
         const btn = page.locator(`#tabbar button[data-tab="${tab}"]`);
@@ -252,6 +256,7 @@ if (!ONLY || ONLY === 'resilience') {
     const lvl = parseInt(await page.locator('#pulseLevel').textContent(), 10);
     if (!(lvl <= 2)) fail(`Pulse level ${lvl}/5 for a storm ~450 km away: ${await page.locator('#pulseVerdict').textContent()}`);
     if (/Dangerous weather/.test(await page.locator('#pulseCard').textContent())) fail('distant storm reported as dangerous weather');
+    if (/Stormy/.test(await page.locator('#heroCond').textContent())) fail('a dry day ~450 km from a cyclone shown as stormy');
     if (!(await page.locator('#warnList .warn.lv-info', { hasText: 'GDACS Red alert for Dana (whole storm)' }).count())) fail('GDACS rating not shown as storm-wide information');
     if (!(await page.locator('#warnList .warn', { hasText: 'Heavy Rain (in your state)' }).count())) fail('state alert not listed');
     await page.screenshot({ path: join(OUT, 'distant-cyclone.png'), fullPage: false });

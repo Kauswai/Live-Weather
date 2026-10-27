@@ -25,12 +25,12 @@
     `<circle cx="20" cy="38" r="10"/><circle cx="33" cy="30" r="13"/><circle cx="46" cy="38" r="9"/>` +
     `<rect x="20" y="36" width="26" height="12" rx="2"/></g>`;
 
-  const drops = (n = 3, heavy = false) => {
+  const drops = (n = 3, heavy = false, slant = 3) => {
     let s = `<g stroke="${C.rain}" stroke-width="${heavy ? 3 : 2.5}" stroke-linecap="round">`;
     const xs = n === 2 ? [26, 40] : [22, 33, 44];
     xs.forEach((x, i) => {
       const y = 52 + (i % 2) * 3;
-      s += `<line class="ic-drop" style="animation-delay:${i * 0.25}s" x1="${x}" y1="${y}" x2="${x - 3}" y2="${y + (heavy ? 9 : 7)}"/>`;
+      s += `<line class="ic-drop" style="animation-delay:${i * 0.25}s" x1="${x}" y1="${y}" x2="${x - slant}" y2="${y + (heavy ? 9 : 7)}"/>`;
     });
     return s + '</g>';
   };
@@ -45,14 +45,19 @@
 
   const bolt = () => `<path fill="${C.bolt}" d="M34 46 L26 60 H33 L29 70 L42 54 H35 L39 46Z"/>`;
 
+  // wind streaks for stormy conditions
+  const gust = () => `<g fill="none" stroke="${C.cloud}" stroke-width="2.4" stroke-linecap="round"><path d="M2 47h11a3.5 3.5 0 1 0-3.5-3.5"/><path d="M4 54h7"/></g>`;
+
   const fog = () =>
     `<g stroke="${C.cloud}" stroke-width="3" stroke-linecap="round" opacity=".85">` +
     `<line x1="12" y1="50" x2="52" y2="50"/><line x1="16" y1="57" x2="48" y2="57"/><line x1="20" y1="64" x2="44" y2="64"/></g>`;
 
-  function iconSVG(code, isDay = true, size = 48) {
+  /** stormy = wind-driven weather (see stormy() below): a dark cloud, slanting rain or snow and wind streaks */
+  function iconSVG(code, isDay = true, size = 48, stormy = false) {
     const sky = isDay ? sun(22, 22, 9) : moon(22, 22, 10);
     let body;
     switch (true) {
+      case stormy: body = cloud(-6, -8, 0.8, C.cloudDark) + cloud(6, -6, 0.95, '#c3cce0') + (code >= 95 ? bolt() : isSnowCode(code) ? flakes() : drops(3, true, 8)) + gust(); break;
       case code === 0: body = isDay ? sun(32, 32, 13) : moon(32, 32, 15); break;
       case code === 1: body = (isDay ? sun(28, 28, 12) : moon(28, 28, 13)) + cloud(16, 14, 0.7); break;
       case code === 2: body = sky + cloud(4, 2, 0.95); break;
@@ -67,6 +72,29 @@
       default: body = cloud(2, 0, 0.95);
     }
     return `<svg class="wx-icon" width="${size}" height="${size}" viewBox="0 0 64 70" aria-hidden="true">${body}</svg>`;
+  }
+
+  const isSnowCode = (c) => (c >= 71 && c <= 77) || c === 85 || c === 86;
+  const isWetCode = (c) => (c >= 51 && c <= 67) || (c >= 80 && c <= 82);
+
+  /** Active storm conditions that the weather code alone understates (it would say "Showers" in a gale or a cyclone).
+   *  Pure; winds in km/h, pressure in hPa, rain in mm/h. o: { wc, ws, wg, pr, ps, tcKt: a cyclone's sustained wind here
+   *  (kt), tcNear: a cyclone centre within ~250 km, warn: a storm-type official warning in force here }.
+   *  Returns null or { label, why: 'tc' | 'tc-bands' | 'warning' | 'wind' | 'low' }. */
+  function stormy(o) {
+    const wc = o.wc ?? 0, ws = o.ws ?? 0, wg = o.wg ?? 0;
+    const snow = isSnowCode(wc), thunder = wc >= 95, wet = isWetCode(wc) || (o.pr ?? 0) >= 0.5;
+    const precip = wet || snow || thunder, cloudy = precip || wc === 3;
+    const label = snow ? 'Snowstorm' : 'Stormy';
+    if ((o.tcKt ?? 0) >= 34) return { label, why: 'tc' };                       // tropical-storm-force winds here
+    if (o.tcNear && precip) return { label, why: 'tc-bands' };                  // inside a cyclone's rain bands
+    // tornado, severe-storm, wind… warnings, once rain or wind has arrived (a hurricane warning can lead the storm by 36 h)
+    if (o.warn && (precip || ws >= 40 || wg >= 60)) return { label, why: 'warning' };
+    if ((precip && (ws >= 50 || wg >= 75)) || (cloudy && (ws >= 62 || wg >= 90))) return { label, why: 'wind' };
+    if (cloudy && (o.ps ?? Infinity) <= 985 && ws >= 40) return { label, why: 'low' };   // deep (extratropical) low
+    if (ws >= 62) return { label: 'Gale-force winds', why: 'wind' };            // dry gale: not "stormy" skies
+    if (wg >= 90) return { label: 'Very windy', why: 'wind' };
+    return null;
   }
 
   const WMO = {
@@ -122,5 +150,5 @@
     (cat ? `<circle r="5.6" fill="${fill}" stroke="#0b1530" stroke-width="1"/><text y=".4" text-anchor="middle" dominant-baseline="central" font-size="7.6" font-weight="800" font-family="Inter, system-ui, sans-serif" fill="${ink}">${Number(cat)}</text>` : '') +
     '</svg>';
 
-  window.WX = { iconSVG, WMO, scene, umbrellaSVG, pulseSVG, stormGlyph };
+  window.WX = { iconSVG, WMO, scene, stormy, umbrellaSVG, pulseSVG, stormGlyph };
 })();

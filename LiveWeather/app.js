@@ -222,7 +222,7 @@
   const dIdx = (ms) => { const { D } = S.t; let i = 0; while (i + 1 < D.time.length && D.time[i + 1] <= ms) i++; return i; };
 
   /* ---------------- Pulse Advisor ---------------- */
-  const computePulse = () => Pulse.compute({ t: S.t, now: Date.now(), win: P('pulseWin'), thr: P('pulseThr'), profile: P('profile'), hz: S.hz, aq: S.aq?.current });
+  const computePulse = () => Pulse.compute({ t: S.t, now: Date.now(), win: P('pulseWin'), thr: P('pulseThr'), profile: P('profile'), hz: S.hz, aq: S.aq?.current, condNow: condNow() });
 
   /* ---------------- rendering ---------------- */
   const ICON = {
@@ -267,17 +267,45 @@
       .forEach(([name, fn]) => safely(name, fn));
   }
 
+  /* ---------------- stormy conditions (WX.stormy) ---------------- */
+  // short-fused watches (tornado, severe thunderstorm) count; hurricane/tropical-storm watches are about later
+  const STORM_WARN = /tornado|hurricane|typhoon|tropical storm|cyclon|severe thunderstorm|high wind|extreme wind|storm warning|gale|blizzard|squall|derecho|strong wind/i;
+  const stormWarnIn = (t0, t1) => (S.hz?.warnings || []).find((w) => w.source === 'official' && w.level !== 'info' && w.local !== false && w.scope !== 'storm'
+    && STORM_WARN.test(w.title || '') && !/statement|outlook/i.test(w.title) && !(/watch/i.test(w.title) && !/tornado|severe thunderstorm/i.test(w.title))
+    && (!num(w.start) || w.start <= t1) && (!num(w.end) || w.end >= t0)) || null;
+  /** "Stormy" (or null) for weather x = { wc, ws, wg, pr, ps } between t0 and t1, adding the nearest cyclone's modelled
+   *  winds here (hourly series from hazards.js) and storm-type warnings in force */
+  function stormyIn(x, t0, t1 = t0) {
+    const pts = (S.hz?.threat?.series || []).filter((p) => p.t >= t0 - 45 * 60e3 && p.t <= t1 + 45 * 60e3);
+    const tcKt = pts.reduce((m, p) => Math.max(m, p.sust || 0), 0), tcKm = pts.reduce((m, p) => Math.min(m, p.dKm), Infinity);
+    const warn = stormWarnIn(t0, t1);
+    const r = WX.stormy({ ...x, tcKt, tcNear: tcKm <= 250, warn: !!warn });
+    return r && { ...r, tcKt, tcKm, warn };
+  }
+  const stormyNow = () => (S.t ? stormyIn(S.t.cur, Date.now()) : null);
+  const condNow = () => stormyNow()?.label || cond(S.t.cur.wc);
+  const isStormIcon = (r) => !!r && (r.label === 'Stormy' || r.label === 'Snowstorm');
+  function stormyText(r, x) {
+    const th = S.hz?.threat, nm = th ? `${th.s.classText || 'Tropical cyclone'} ${th.s.name}` : 'A tropical cyclone';
+    if (r.why === 'tc') return `${nm}: winds near ${fW(r.tcKt * 1.852)} ${wU()} here.`;
+    if (r.why === 'tc-bands') return `In the rain bands of ${nm}, ${fD(r.tcKm)} away.`;
+    if (r.why === 'warning') return `${r.warn.agency || 'Official'}: ${r.warn.title} in force.`;
+    const wind = `Winds ${fW(x.ws)} ${wU()}, gusts ${fW(x.wg)} ${wU()}`;
+    return r.why === 'low' ? `${wind} around a deep low (${fPr(x.ps)} ${prU()}).` : `${wind}.`;
+  }
+
   function renderHero() {
     const { cur, H, D } = S.t; const now = Date.now(); const di = dIdx(now);
+    const storm = stormyNow();
     $('#placeName').textContent = S.loc.name || `${Math.abs(S.loc.lat).toFixed(2)}°${S.loc.lat >= 0 ? 'N' : 'S'}, ${Math.abs(S.loc.lon).toFixed(2)}°${S.loc.lon >= 0 ? 'E' : 'W'}`;
     $('#placeSub').textContent = S.loc.sub || (S.loc.source === 'gps' ? 'Your current location' : S.loc.source === 'saved' ? 'Your saved location' : '');
-    $('#heroIcon').innerHTML = WX.iconSVG(cur.wc, cur.day, 110);
+    $('#heroIcon').innerHTML = WX.iconSVG(cur.wc, cur.day, 110, isStormIcon(storm));
     $('#heroTemp').textContent = fT(cur.t);
-    $('#heroCond').textContent = cond(cur.wc);
+    $('#heroCond').textContent = storm?.label || cond(cur.wc);
     $('#heroFeels').textContent = `Feels like ${fT(cur.at)}`;
     $('#heroHiLo').textContent = `H ${fT(D.tmax[di])}  ·  L ${fT(D.tmin[di])}`;
 
-    const parts = [];
+    const parts = storm ? [stormyText(storm, cur)] : [];
     const y = at('t', now - 24 * HOUR);
     if (num(y)) {
       const diff = dT(cur.t - y);
@@ -516,7 +544,7 @@
           tooltip: { backgroundColor: 'rgba(10,16,34,.94)', borderColor: 'rgba(255,255,255,.15)', borderWidth: 1, padding: 10,
             callbacks: {
               label: (it) => (it.datasetIndex === 0 ? ` ${fT(M.t[js[it.dataIndex]])} (feels ${fT(v('at', js[it.dataIndex]))})` : ` ${fP(M.pr[js[it.dataIndex]])} ${pU()} in 15 min`),
-              afterBody: (items) => { const j = js[items[0].dataIndex]; return [num(v('wg', j)) ? `Wind ${fW(v('ws', j))} ${wU()} from ${dirName(v('wd', j) ?? 0)}, gusts ${fW(v('wg', j))}` : '', num(v('wc', j)) ? cond(M.wc[j]) : '', num(v('vis', j)) ? `Visibility ${fV(M.vis[j])}` : ''].filter(Boolean); },
+              afterBody: (items) => { const j = js[items[0].dataIndex]; return [num(v('wg', j)) ? `Wind ${fW(v('ws', j))} ${wU()} from ${dirName(v('wd', j) ?? 0)}, gusts ${fW(v('wg', j))}` : '', num(v('wc', j)) ? (stormyIn({ wc: M.wc[j], ws: v('ws', j), wg: v('wg', j), pr: (M.pr[j] ?? 0) * 4 }, M.time[j])?.label || cond(M.wc[j])) : '', num(v('vis', j)) ? `Visibility ${fV(M.vis[j])}` : ''].filter(Boolean); },
             } },
         },
         scales: {
@@ -671,8 +699,9 @@
       const isNow = i === i0;
       const t = isNow ? cur.t : H.t[i], wc = isNow ? cur.wc : H.wc[i], day = isNow ? cur.day : !!H.day[i];
       const pp = H.pp[i] ?? 0;
-      cards.push(`<div class="hour ${isNow ? 'now' : ''}"><span class="h-t">${isNow ? 'Now' : esc(fmtH(H.time[i]))}</span>
-        ${WX.iconSVG(wc, day, 36)}<span class="h-temp">${fT(t)}</span>
+      const storm = isNow ? stormyNow() : stormyIn({ wc, ws: H.ws[i], wg: H.wg[i], pr: H.pr[i], ps: H.ps[i] }, H.time[i]);
+      cards.push(`<div class="hour ${isNow ? 'now' : ''}${isStormIcon(storm) ? ' stormy' : ''}" title="${esc(storm?.label || cond(wc))}"><span class="h-t">${isNow ? 'Now' : esc(fmtH(H.time[i]))}</span>
+        ${WX.iconSVG(wc, day, 36, isStormIcon(storm))}<span class="h-temp">${fT(t)}</span>
         <span class="h-pp ${pp < 20 ? 'dim' : ''}">💧${pp}%</span></div>`);
       events.filter((e) => e.t >= H.time[i] && e.t < H.time[i] + HOUR && !(isNow && e.t < now)).forEach((e) => {
         cards.push(`<div class="hour sunev"><span class="h-t">${esc(fmtHM(e.t))}</span>
@@ -682,6 +711,8 @@
     $('#hourly').innerHTML = cards.join('');
   }
 
+  /** a day is stormy if its weather and peak gust qualify, or a cyclone or storm warning affects it */
+  const dayStormy = (k) => { const D = S.t.D; return num(D.time[k]) ? stormyIn({ wc: D.wc[k], wg: D.gmax[k], pr: (D.prs[k] ?? 0) / 24 }, D.time[k], D.time[k] + 24 * HOUR - 1) : null; };
   function renderDaily() {
     const { D, cur } = S.t; const di = dIdx(Date.now());
     const idx = []; for (let k = di; k < D.time.length; k++) idx.push(k);
@@ -694,8 +725,9 @@
       const l = ((D.tmin[k] - lo) / span) * 100, w = ((D.tmax[k] - D.tmin[k]) / span) * 100;
       const nowDot = k === di && num(cur.t) ? `<span class="now-dot" style="left:${clamp(((cur.t - lo) / span) * 100, 0, 100)}%"></span>` : '';
       const pp = D.ppm[k] ?? 0;
-      return `<div class="day"><div class="d-name"><b>${dayName(k)}</b><small>${dateTxt(k)}</small></div>
-        ${WX.iconSVG(D.wc[k], true, 34)}
+      const storm = dayStormy(k);
+      return `<div class="day${isStormIcon(storm) ? ' stormy' : ''}" title="${esc(storm?.label || cond(D.wc[k]))}"><div class="d-name"><b>${dayName(k)}</b><small>${dateTxt(k)}</small></div>
+        ${WX.iconSVG(D.wc[k], true, 34, isStormIcon(storm))}
         <div class="d-pp" title="Max rain chance · total precipitation">${pp >= 10 ? pp + '%' : ''}<small>${(D.prs[k] ?? 0) >= 0.1 ? fP(D.prs[k]) + ' ' + pU() : ''}</small></div>
         <span class="d-lo">${fT(D.tmin[k])}</span>
         <div class="range"><i style="left:${l}%;width:${Math.max(w, 2)}%"></i>${nowDot}</div>
@@ -712,7 +744,7 @@
     const rh24 = range('rh', i - 24, i);
     const yd = di - 1;
     const stats = `<div class="past-grid">
-      <div class="stat"><small>Yesterday</small><b>${fT(D.tmax[yd])} / ${fT(D.tmin[yd])}</b><br><span>${cond(D.wc[yd])}</span></div>
+      <div class="stat"><small>Yesterday</small><b>${fT(D.tmax[yd])} / ${fT(D.tmin[yd])}</b><br><span>${esc(dayStormy(yd)?.label || cond(D.wc[yd]))}</span></div>
       <div class="stat"><small>Rain · last 24 h</small><b>${fP(rain24)} ${pU()}</b><br><span>48 h: ${fP(rain48)} ${pU()}</span></div>
       <div class="stat"><small>Peak gust · 24 h</small><b>${fW(gust24)} ${wU()}</b><br><span>${beaufort(gust24)}</span></div>
       <div class="stat"><small>Humidity · 24 h</small><b>${rh24.length ? Math.round(sum(rh24) / rh24.length) : '–'}% avg</b><br><span>${rh24.length ? `${Math.round(Math.min(...rh24))}–${Math.round(Math.max(...rh24))}% range` : ''}</span></div>
@@ -1097,7 +1129,7 @@
 
   function snapshot() {
     const { cur } = S.t;
-    return { t: cur.t, rh: cur.rh, cc: cur.cc, ps: cur.ps, ws: cur.ws, wc: cur.wc, time: cur.time };
+    return { t: cur.t, rh: cur.rh, cc: cur.cc, ps: cur.ps, ws: cur.ws, wc: cur.wc, label: condNow(), time: cur.time };
   }
 
   function feedAfterRefresh(reason) {
@@ -1110,7 +1142,7 @@
       if (Math.abs(snap.cc - prev.cc) >= 15) { changes++; feed('info', '☁️', `Cloud cover ${snap.cc > prev.cc ? 'increased' : 'decreased'} to ${Math.round(snap.cc)}%`); }
       if (Math.abs(snap.ps - prev.ps) >= 0.8) { changes++; feed('info', '📉', () => `Pressure ${snap.ps > prev.ps ? 'rising' : 'falling'}: ${fPr(snap.ps)} ${prU()}`); }
       if (Math.abs(snap.ws - prev.ws) >= 6) { changes++; feed('info', '💨', () => `Wind ${snap.ws > prev.ws ? 'picked up' : 'eased'} to ${fW(snap.ws)} ${wU()}`); }
-      if (snap.wc !== prev.wc) { changes++; feed(isWet(snap.wc) ? 'alert' : 'info', '🔄', `Conditions changed: ${cond(prev.wc)} → ${cond(snap.wc)}`); }
+      if (snap.label !== prev.label) { changes++; feed(isWet(snap.wc) || stormyNow() ? 'alert' : 'info', '🔄', `Conditions changed: ${prev.label} → ${snap.label}`); }
       if (!changes && reason !== 'auto-quiet') feed('good', '✓', snap.time !== prev.time ? 'New observation — conditions steady' : 'Checked — no change since last update');
     }
     feedPulse(u);
@@ -1297,7 +1329,7 @@
     // a GPS fix has no name yet: reuse one saved for this spot instead of asking the reverse geocoder again
     if (!loc.name && hasCache()) { const p = WxCache.place(loc.lat, loc.lon); if (p) Object.assign(loc, p); }
     S.loc = loc;
-    if (changedPlace) { S.prevSnap = null; S.prevPulse = null; S.announced.clear(); S.chartAnimate = true; }
+    if (changedPlace) { S.prevSnap = null; S.prevPulse = null; S.hz = null; S.announced.clear(); S.chartAnimate = true; }
     if (why) feed('info', loc.source === 'gps' ? '📍' : '🔎', why);
     renderStatus();
     refresh('location');

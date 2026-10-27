@@ -96,7 +96,7 @@
     else rain = 0;
     let rainDetail;
     if (rain === 3 && rainingNow) {
-      rainDetail = `${F.cond(cur.wc)} right now${clearsAt ? `, easing around ${F.fmtHM(clearsAt)}` : ' and continuing for a while'}.`;
+      rainDetail = `${o.condNow || F.cond(cur.wc)} right now${clearsAt ? `, easing around ${F.fmtHM(clearsAt)}` : ' and continuing for a while'}.`;
       add('rain', 2, 40, isSnow(cur.wc) ? 'Snowing — cover up' : 'Umbrella needed now', rainDetail, isSnow(cur.wc) ? 'snow' : 'umbrella');
     } else if (rain >= 2) {
       rainDetail = `Rain likely ${first != null && H.time[first] > now ? 'from about ' + when(H.time[first]) : 'soon'} — peak ${maxP}% chance${maxI != null && H.time[maxI] > now ? ' around ' + when(H.time[maxI]) : ''}, ~${F.fP(sum)} ${F.pU()} expected in the next ${winH} h.`;
