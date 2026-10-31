@@ -34,7 +34,7 @@ const SCENARIOS = [
   { name: 'tokyo-storm', place: 'tokyo', wx: 'storm', cond: /^(?!Stormy)/ },
 ];
 const VIEWPORTS = { phone: { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 }, desktop: { viewport: { width: 1440, height: 1000 } } };
-const TABS = ['now', 'forecast', 'alerts', 'storms', 'sun', 'feed'];
+const TABS = ['now', 'forecast', 'alerts', 'storms', 'sun', 'moon', 'feed'];
 
 let failures = 0;
 const fail = (msg) => { failures++; console.log('  ✗ ' + msg); };
@@ -91,6 +91,13 @@ for (const sc of SCENARIOS) {
     try { await page.waitForFunction(() => document.querySelector('#app')?.getAttribute('aria-busy') === 'false', null, { timeout: 15000 }); }
     catch { fail('app never finished loading'); }
     await page.waitForTimeout(1500);
+    // moon tracker: below the sun tracker on wide screens, its own tab on phones
+    const moon = await page.evaluate(() => ({ stats: document.querySelectorAll('#mtStats .stat').length, days: document.querySelectorAll('#mtStrip .mt-day').length,
+      curve: (document.querySelector('#mtCurve')?.innerHTML || '').length, disk: !!document.querySelector('#mtDisk .moon-disk'),
+      below: (() => { const s = document.querySelector('[data-sec="sun"]').getBoundingClientRect(), m = document.querySelector('[data-sec="moon"]').getBoundingClientRect(); return m.top >= s.bottom - 1; })() }));
+    if (moon.stats !== 12 || moon.days !== 30 || moon.curve < 500) fail('moon tracker incomplete: ' + JSON.stringify(moon));
+    if (vp === 'desktop' && !moon.below) fail('moon tracker is not below the sun tracker');
+    if (vp === 'desktop' && !moon.disk) fail('moon phase disk not drawn');
     const condTxt = await page.locator('#heroCond').textContent();
     if (!sc.cond.test(condTxt)) fail(`condition shown as "${condTxt}"`);
     if (sc.wx === 'storm' && !(await page.locator('#hourly .hour.stormy').count())) fail('severe-thunderstorm hours not marked stormy');

@@ -20,6 +20,7 @@
     ['past', 'Looking back', 'Forecast'],
     ['storms', 'Cyclone tracker', 'Storms'],
     ['sun', 'Sun tracker', 'Sun'],
+    ['moon', 'Moon tracker', 'Moon'],
   ].map(([id, label, tab]) => ({ id, label, tab }));
   const DEFAULT_ORDER = SECTIONS.map((s) => s.id);
   const TILES = [['feels', 'Feels like'], ['hum', 'Humidity'], ['dew', 'Dew point'], ['cloud', 'Cloud cover'], ['sky', 'Sky colour'], ['wind', 'Wind'], ['press', 'Pressure'],
@@ -37,7 +38,7 @@
     theme: [['dynamic', 'Live sky'], ['night', 'Night'], ['oled', 'Black'], ['contrast', 'High contrast']],
     density: [['comfortable', 'Comfortable'], ['compact', 'Compact']],
     effects: [['full', 'Full'], ['lite', 'Lite'], ['off', 'Off']],
-    defaultTab: [['last', 'Last used'], ['now', 'Now'], ['forecast', 'Forecast'], ['alerts', 'Alerts'], ['storms', 'Storms'], ['sun', 'Sun'], ['feed', 'Feed']],
+    defaultTab: [['last', 'Last used'], ['now', 'Now'], ['forecast', 'Forecast'], ['alerts', 'Alerts'], ['storms', 'Storms'], ['sun', 'Sun'], ['moon', 'Moon'], ['feed', 'Feed']],
     profile: [['standard', 'Standard'], ['sensitive', 'Sensitive'], ['hardy', 'Hardy']],
     pulseWin: [[1, '1 h'], [3, '3 h'], [6, '6 h'], [12, '12 h'], [24, '24 h']],
     min15: [['auto', 'Auto (US & Europe)'], ['off', 'Off']],
@@ -128,7 +129,7 @@
   // columns (the Pulse Advisor sits beside both the current conditions and the warnings).
   const SPANS = { xl: { hero: 7, pulse: 5, chart: 8, feed: 4, daily: 7, past: 5 }, md: { feed: 6, past: 6 } };
   const TALL = { xl: { pulse: true } };
-  const TABS = ['now', 'forecast', 'alerts', 'storms', 'sun', 'feed'];
+  const TABS = ['now', 'forecast', 'alerts', 'storms', 'sun', 'moon', 'feed'];
   const Layout = {
     bp: () => (window.innerWidth > 1080 ? 'xl' : window.innerWidth > 760 ? 'md' : 'sm'),
     apply() {

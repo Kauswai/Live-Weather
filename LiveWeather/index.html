@@ -17,7 +17,7 @@
   <link rel="apple-touch-icon" href="icons/icon-180.png" />
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="vendor/leaflet/leaflet.css" />
-  <link rel="stylesheet" href="styles.css?v=17" />
+  <link rel="stylesheet" href="styles.css?v=18" />
 </head>
 <body class="scene-clear-day">
   <div class="sky" aria-hidden="true"></div>
@@ -289,9 +289,39 @@
       </div>
     </section>
 
+    <section class="card suntrack-card moontrack-card" data-sec="moon" data-tab="moon">
+      <div class="card-head wrap">
+        <h2>Moon tracker</h2>
+        <span class="muted small" id="mtSub">—</span>
+      </div>
+      <div class="st-grid">
+        <div class="st-curve">
+          <div class="st-label"><span>Moon altitude · local midnight → midnight · hover for past/future position</span><span id="mtPhase" class="st-phase">—</span></div>
+          <svg id="mtCurve" viewBox="0 0 640 250" aria-label="Moon altitude through the day"></svg>
+          <div class="st-tip" id="mtCurveTip" hidden></div>
+        </div>
+        <div class="st-dome mt-side">
+          <div class="mt-disk">
+            <div class="st-label"><span>As seen from here now</span></div>
+            <svg id="mtDisk" viewBox="-64 -72 128 136" aria-label="The Moon's phase and tilt as seen from this location"></svg>
+            <div class="mt-disk-note muted small" id="mtDiskNote"></div>
+          </div>
+          <div class="mt-dome">
+            <div class="st-label"><span>Sky path (from above)</span></div>
+            <svg id="mtDome" viewBox="0 0 240 240" aria-label="Moon path across the sky"></svg>
+          </div>
+        </div>
+      </div>
+      <div class="st-stats" id="mtStats"></div>
+      <div class="st-year mt-month">
+        <div class="st-label"><span>Next 30 days · phase each evening (21:00)</span><span class="muted" id="mtMonthNote"></span></div>
+        <div class="mt-strip" id="mtStrip"></div>
+      </div>
+    </section>
+
     <p class="empty-hint card" id="emptyHint" hidden>Every section on this screen is hidden. Turn them back on in <button class="linkish" data-open-settings>Settings → Layout</button>.</p>
 
-    <footer class="foot" data-tab="now forecast alerts storms sun feed">
+    <footer class="foot" data-tab="now forecast alerts storms sun moon feed">
       Data: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> (forecast, 15-minute data &amp; air quality, CC BY 4.0) ·
       place names: <a href="https://www.bigdatacloud.com/" target="_blank" rel="noopener">BigDataCloud</a> ·
       cyclones: NHC, JMA, JTWC, IMD, GDACS · warnings: NWS, NDMA SACHET, HKO ·
@@ -307,6 +337,7 @@
     <button data-tab="alerts"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2 20h20L12 3z"/><path d="M12 10v4M12 17h.01"/></svg><span>Alerts</span><i class="badge" id="alertBadge" hidden></i></button>
     <button data-tab="storms"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="2.6"/><path d="M14.4 10.2C13.6 5.6 9.4 3.4 4.6 5.2"/><path d="M9.6 13.8c.8 4.6 5 6.8 9.8 5"/></svg><span>Storms</span><i class="badge dot amber" id="stormBadge" hidden></i></button>
     <button data-tab="sun"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 18h18"/><path d="M6 18a6 6 0 0 1 12 0"/><path d="M12 6V3M5.6 8.6 3.5 6.5M18.4 8.6l2.1-2.1"/></svg><span>Sun</span></button>
+    <button data-tab="moon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 14.5A8 8 0 1 1 9.5 4.5a6.5 6.5 0 0 0 10 10z"/></svg><span>Moon</span></button>
     <button data-tab="feed"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg><span>Feed</span><i class="badge dot" id="feedBadge" hidden></i></button>
   </nav>
 
@@ -342,19 +373,20 @@
 
   <div class="toast" id="toast" role="status" hidden></div>
 
-  <script src="guard.js?v=17"></script>
+  <script src="guard.js?v=18"></script>
   <script src="vendor/chartjs/chart.umd.js"></script>
   <script src="vendor/leaflet/leaflet.js"></script>
-  <script src="icons.js?v=17"></script>
-  <script src="settings.js?v=17"></script>
-  <script src="cache.js?v=17"></script>
-  <script src="fx.js?v=17"></script>
-  <script src="sun.js?v=17"></script>
-  <script src="pulse.js?v=17"></script>
-  <script src="sky.js?v=17"></script>
-  <script src="hazards.js?v=17"></script>
-  <script src="storms.js?v=17"></script>
-  <script src="stations.js?v=17"></script>
-  <script src="app.js?v=17"></script>
+  <script src="icons.js?v=18"></script>
+  <script src="settings.js?v=18"></script>
+  <script src="cache.js?v=18"></script>
+  <script src="fx.js?v=18"></script>
+  <script src="sun.js?v=18"></script>
+  <script src="moon.js?v=18"></script>
+  <script src="pulse.js?v=18"></script>
+  <script src="sky.js?v=18"></script>
+  <script src="hazards.js?v=18"></script>
+  <script src="storms.js?v=18"></script>
+  <script src="stations.js?v=18"></script>
+  <script src="app.js?v=18"></script>
 </body>
 </html>

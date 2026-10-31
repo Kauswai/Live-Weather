@@ -270,7 +270,7 @@
     if (!S.t) return;
     safely('weather effects', applyFx);
     updatePulse();
-    [['current conditions', renderHero], ['sun times', renderSun], ['Pulse Advisor', renderPulse], ['detail tiles', renderTiles], ['sun tracker', updateSunTracker],
+    [['current conditions', renderHero], ['sun times', renderSun], ['Pulse Advisor', renderPulse], ['detail tiles', renderTiles], ['sun tracker', updateSunTracker], ['moon tracker', updateMoonTracker],
       ['15-minute outlook', renderQ15], ['chart', renderChart], ['hourly forecast', renderHourly], ['8-day forecast', renderDaily], ['look-back', renderPast], ['status line', renderStatus]]
       .forEach(([name, fn]) => safely(name, fn));
   }
@@ -498,19 +498,16 @@
         <div class="t-note">${catTxt}${num(aq.pm2_5) ? ` · PM2.5 ${aq.pm2_5.toFixed(0)} µg/m³` : ''}</div></div>`);
     }
     // Moon phase
-    const m = moonPhase(now); const dFull = Math.round(m.toFull);
-    tile('moon', `<div class="card tile"><div class="t-head">${ico('moon')}Moon</div>
+    const m = typeof Lunar !== 'undefined' ? moonPhase(now) : null; const dFull = m ? Math.round(m.toFull) : 0;
+    if (m) tile('moon', `<div class="card tile"><div class="t-head">${ico('moon')}Moon</div>
       <div class="t-val"><span aria-hidden="true">${m.emoji}</span> ${Math.round(m.illum * 100)}<small>% lit</small></div>
       <div class="t-note">${m.name}<br>${dFull === 0 || dFull >= 29 ? 'Full moon tonight' : `Full moon in ${dFull} day${dFull === 1 ? '' : 's'}`}</div></div>`);
     $('#tiles').innerHTML = tiles.join('') || '<p class="muted small tiles-none">All detail tiles are hidden — choose some in <button class="linkish" data-open-settings>Settings → Layout</button>.</p>';
   }
 
   function moonPhase(ms) {
-    const SYN = 29.530588853;
-    const age = ((((ms / 86400000 + 2440587.5 - 2451550.1) / SYN) % 1) + 1) % 1; // 0 = new, 0.5 = full
-    const k = Math.round(age * 8) % 8;
-    const names = ['New moon', 'Waxing crescent', 'First quarter', 'Waxing gibbous', 'Full moon', 'Waning gibbous', 'Last quarter', 'Waning crescent'];
-    return { name: names[k], emoji: ['🌑', '🌒', '🌓', '🌔', '🌕', '🌖', '🌗', '🌘'][k], illum: (1 - Math.cos(2 * Math.PI * age)) / 2, toFull: (((0.5 - age) % 1) + 1) % 1 * SYN };
+    const p = Lunar.position(ms, S.t.lat, S.t.lon), full = Lunar.phases(ms, 4).find((x) => x.k === 2);
+    return { name: Lunar.phaseName(p.elong), emoji: ['🌑', '🌒', '🌓', '🌔', '🌕', '🌖', '🌗', '🌘'][Math.round(p.elong / 45) % 8], illum: p.illum, toFull: full ? (full.t - ms) / 86400000 : 0 };
   }
 
   /* ---------------- 15-minute outlook ---------------- */
@@ -1095,6 +1092,233 @@
     $('#stPhase').textContent = `${ph}${num(target) ? ` · ${lbl.toLowerCase()} ${dur(target - now)}` : ''}`;
   }
 
+  /* ---------------- moon tracker (moon.js) ---------------- */
+  const MT = { key: null, diskAt: 0 };
+  const MV = { L: 40, R: 624, TOP: 24, HZ: 168, BOT: 212 };      // curve geometry; below the horizon down to −30°
+  /** the Moon's disk with its lit part. Unrotated, the bright limb faces right; rot turns it clockwise on screen. */
+  function moonDiskSVG(illum, r, rot = 0, cls = '') {
+    const k = clamp(illum, 0, 1), rx = Math.abs(1 - 2 * k) * r;
+    const lit = k < 0.004 ? '' : k > 0.996 ? `<circle r="${r}" class="m-lit"/>`
+      : `<path class="m-lit" d="M0,${-r}A${r},${r} 0 0 1 0,${r}A${rx.toFixed(2)},${r} 0 0 ${k < 0.5 ? 0 : 1} 0,${-r}Z" transform="rotate(${rot.toFixed(1)})"/>`;
+    return `<g class="moon-disk ${cls}"><circle r="${r}" class="m-dark"/>${lit}<circle r="${r}" class="m-rim"/></g>`;
+  }
+  // the bright limb as seen from here: Lunar's tilt is anticlockwise from straight up
+  const limbRot = (p) => -p.tilt - 90;
+  // calendar icon, upright: lit on the right while waxing in the northern hemisphere, on the left in the southern
+  const moonIcon = (illum, waxing, south, size = 22) => `<svg viewBox="-12 -12 24 24" width="${size}" height="${size}" aria-hidden="true">${moonDiskSVG(illum, 10.5, waxing !== south ? 0 : 180)}</svg>`;
+  const pct = (v) => `${Math.round(v * 100)}%`;
+  const dayTag = (t) => { const d = Math.round((localMidnightUTC(t) - localMidnightUTC(Date.now())) / DAY); return d === 0 ? 'today' : d === 1 ? 'tomorrow' : d === -1 ? 'yesterday' : d > 0 ? `in ${d} days` : `${-d} days ago`; };
+  const whenTxt = (t) => `${fmtDay(t)} ${fmtDate(t)}, ${fmtHM(t)}`;
+
+  /** when the Moon is up at night over the next 18 h, and how cloudy those hours look */
+  function moonViewing() {
+    const { H } = S.t; const now = Date.now(); const hrs = [];
+    for (let i = nowIdx(); i < H.time.length && H.time[i] <= now + 18 * HOUR; i++) {
+      const t = Math.max(H.time[i], now);
+      if (Lunar.position(t, MT.lat, MT.lon).alt > 3 && Solar.position(t, MT.lat, MT.lon).el < -6) hrs.push({ t, cc: H.cc[i] });
+    }
+    if (!hrs.length) return { title: 'Not up after dark', sub: 'The Moon isn’t above the horizon at night in the next 18 h' };
+    const cc = hrs.reduce((s, h) => s + (num(h.cc) ? h.cc : 0), 0) / hrs.length;
+    const title = cc < 25 ? 'Clear view' : cc < 60 ? 'Partly cloudy view' : cc < 85 ? 'Mostly hidden by cloud' : 'Hidden by cloud';
+    return { title, sub: `${fmtHM(hrs[0].t)}–${fmtHM(hrs[hrs.length - 1].t + HOUR)} · cloud cover ${Math.round(cc)}%` };
+  }
+
+  function buildMoonTracker(mid) {
+    const { lat, lon } = S.t; const off = S.t.offset ?? 0;
+    const svg = $('#mtCurve'); const cw = Math.max(300, Math.round(svg.parentElement.clientWidth - 24));
+    MV.R = cw - 16; svg.setAttribute('viewBox', `0 0 ${cw} 250`);
+    const d0 = mid - off, d1 = d0 + DAY;
+    const ev = Lunar.times(mid, lat, lon, off), evT = Lunar.times(mid + DAY, lat, lon, off);
+    const yMax = Math.max(15, Math.ceil(Math.max(ev.transitAlt, 1) / 15) * 15);
+    const X = (t) => MV.L + ((t - d0) / DAY) * (MV.R - MV.L);
+    const Y = (a) => (a >= 0 ? MV.HZ - (Math.min(a, yMax) / yMax) * (MV.HZ - MV.TOP) : MV.HZ + (Math.min(-a, 30) / 30) * (MV.BOT - MV.HZ));
+    Object.assign(MT, { ev, evT, d0, d1, X, Y, lat, lon, off, mid, diskAt: 0, south: lat < 0 });
+
+    // ---- altitude curve ----
+    const pts = [];
+    for (let k = 0; k <= 192; k++) { const t = d0 + (DAY * k) / 192; pts.push([X(t), Y(Lunar.position(t, lat, lon).alt)]); }
+    const line = 'M' + pts.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join('L');
+    const area = 'M' + pts.map(([x, y]) => `${x.toFixed(1)},${Math.min(y, MV.HZ).toFixed(1)}`).join('L') + `L${MV.R},${MV.HZ}L${MV.L},${MV.HZ}Z`;
+    let g = `<defs><linearGradient id="mtFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#dfe6fb" stop-opacity=".28"/><stop offset="1" stop-color="#7c8fc8" stop-opacity=".02"/></linearGradient>
+      <clipPath id="mtPastClip"><rect id="mtClipRect" x="${MV.L}" y="0" width="0" height="250"/></clipPath></defs>`;
+    g += svgNS('rect', { class: 'below', x: MV.L, y: MV.HZ, width: MV.R - MV.L, height: MV.BOT - MV.HZ });
+    for (let e = 15; e <= yMax; e += 15) {
+      g += svgNS('line', { class: 'grid-line', x1: MV.L, x2: MV.R, y1: Y(e), y2: Y(e) });
+      g += svgNS('text', { x: MV.L - 6, y: Y(e) + 4, 'text-anchor': 'end' }, e + '°');
+    }
+    g += svgNS('text', { x: MV.L - 6, y: MV.HZ + 4, 'text-anchor': 'end' }, '0°');
+    g += svgNS('text', { x: MV.L - 6, y: MV.BOT + 2, 'text-anchor': 'end' }, '−30°');
+    g += svgNS('path', { d: area, fill: 'url(#mtFill)' });
+    g += svgNS('line', { class: 'horizon-line', x1: MV.L, x2: MV.R, y1: MV.HZ, y2: MV.HZ });
+    g += svgNS('path', { class: 'track-future', d: line });
+    g += svgNS('path', { class: 'track-past', d: line, 'clip-path': 'url(#mtPastClip)' });
+    if (!ev.alwaysDown && ev.transit > d0 + 20 * 60e3 && ev.transit < d1 - 20 * 60e3) {
+      const xt = X(ev.transit);
+      g += svgNS('line', { class: 'noon-line', x1: xt, x2: xt, y1: Y(ev.transitAlt), y2: MV.HZ });
+      g += svgNS('text', { x: clamp(xt, MV.L + 70, MV.R - 70), y: Math.max(12, Y(ev.transitAlt) - 10), 'text-anchor': 'middle', class: 'lbl-strong' }, `☾ Highest ${esc(fmtHM(ev.transit))} · ${fDeg(ev.transitAlt)}`);
+    }
+    [[ev.rise, '↑'], [ev.set, '↓']].forEach(([t, s]) => {
+      if (!num(t)) return;
+      const x = X(t);
+      g += svgNS('circle', { class: 'ev-dot', cx: x, cy: MV.HZ, r: 4 });
+      g += svgNS('text', { x: clamp(x, MV.L + 24, MV.R - 24), y: MV.HZ - 9, 'text-anchor': 'middle', class: 'lbl-strong' }, `${s}${esc(fmtHM(t))}`);
+    });
+    const every = (MV.R - MV.L) / 8 < 56 ? 6 : 3;                 // hour labels: every 3 h, or 6 h on narrow screens
+    for (let t = Math.ceil((d0 + off) / HOUR) * HOUR - off; t < d1; t += HOUR) {
+      const x = X(t);
+      g += svgNS('line', { class: 'grid-line', x1: x, x2: x, y1: MV.BOT, y2: MV.BOT + 4 });
+      if (hourOf(t) % every === 0 && x - MV.L > 20 && MV.R - x > 20) g += svgNS('text', { x, y: MV.BOT + 16, 'text-anchor': 'middle' }, esc(fmtH(t)));
+    }
+    const caption = ev.alwaysUp ? 'The Moon stays above the horizon all day'
+      : ev.alwaysDown ? 'The Moon stays below the horizon all day'
+      : [num(ev.rise) ? `Moonrise ${fmtHM(ev.rise)}` : 'No moonrise today', num(ev.set) ? `moonset ${fmtHM(ev.set)}` : 'no moonset today'].join(' · ');
+    g += svgNS('text', { x: (MV.L + MV.R) / 2, y: 247, 'text-anchor': 'middle', class: 'lbl-strong' }, esc(caption));
+    g += `<line id="mtNowLine" class="now-line" x1="0" x2="0" y1="${MV.TOP}" y2="${MV.BOT}"/>
+      <g id="mtMoonG"><circle class="moon-glow" r="14"/><g id="mtMoonDisk"></g><text id="mtMoonTxt" class="lbl-strong" text-anchor="middle" y="-19"></text></g>
+      <g id="mtHover" style="display:none"><line id="mtHoverLine" class="hover-line" x1="0" x2="0" y1="${MV.TOP}" y2="${MV.BOT}"/><circle id="mtHoverDot" class="hover-dot" r="5"/></g>`;
+    svg.innerHTML = g;
+    $('#mtCurveTip').hidden = true;
+
+    // ---- sky dome: today's path above the horizon ----
+    let d = svgNS('circle', { class: 'dome-edge', cx: DM.C, cy: DM.C, r: DM.R });
+    [30, 60].forEach((e) => {
+      d += svgNS('circle', { class: 'dome-ring', cx: DM.C, cy: DM.C, r: (DM.R * (90 - e)) / 90 });
+      d += svgNS('text', { x: DM.C + 3, y: DM.C - (DM.R * (90 - e)) / 90 + 11 }, e + '°');
+    });
+    [['N', 0], ['E', 90], ['S', 180], ['W', 270]].forEach(([n, a]) => {
+      const [x, y] = domePt(a, -1).map((v) => DM.C + (v - DM.C) * 1.11);
+      d += svgNS('text', { x, y: y + 4, 'text-anchor': 'middle', class: 'lbl-strong' }, n);
+    });
+    let seg = [], segs = [];
+    for (let k = 0; k <= 192; k++) {
+      const p = Lunar.position(d0 + (DAY * k) / 192, lat, lon);
+      if (p.alt >= -0.3) seg.push(domePt(p.az, Math.max(0, p.alt))); else if (seg.length) { segs.push(seg); seg = []; }
+    }
+    if (seg.length) segs.push(seg);
+    segs.filter((s) => s.length > 1).forEach((s) => { d += svgNS('path', { class: 'track-future', d: 'M' + s.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join('L') }); });
+    [[ev.riseAz, '↑'], [ev.setAz, '↓']].forEach(([az, s]) => {
+      if (!num(az)) return;
+      const [x, y] = domePt(az, 0);
+      d += svgNS('line', { class: 'dome-ray', x1: DM.C, y1: DM.C, x2: x, y2: y });
+      d += svgNS('circle', { class: 'ev-dot', cx: x, cy: y, r: 4 });
+      d += svgNS('text', { x: DM.C + (x - DM.C) * 0.8, y: DM.C + (y - DM.C) * 0.8 + 4, 'text-anchor': 'middle' }, `${s}${Math.round(az)}°`);
+    });
+    d += `<g id="mtDomeMoon"><circle class="moon-glow" r="12"/><g id="mtDomeDisk"></g></g><circle id="mtDomeHover" class="hover-dot" r="5" style="display:none"/>`;
+    $('#mtDome').innerHTML = d;
+
+    // ---- stats ----
+    const now = Date.now(), p = Lunar.position(now, lat, lon);
+    const next = Lunar.phases(now, 4), full = next.find((x) => x.k === 2), nw = next.find((x) => x.k === 0), qtr = next.find((x) => x.k === 1 || x.k === 3);
+    const sizeVs = (p.diam / 31.09 - 1) * 100;                    // 31.09′ = the apparent diameter at the mean distance
+    const fullNote = !full ? '' : full.dist < 361000 ? `Supermoon — ${fD(full.dist)} away` : full.dist > 404000 ? `Micromoon — ${fD(full.dist)} away` : dayTag(full.t);
+    const riseTxt = (t, alt) => (num(t) ? esc(fmtHM(t)) : alt);
+    const nextRise = num(ev.rise) ? null : num(evT.rise) ? `Tomorrow ${fmtHM(evT.rise)}` : '';
+    const nextSet = num(ev.set) ? null : num(evT.set) ? `Tomorrow ${fmtHM(evT.set)}` : '';
+    const view = moonViewing();
+    $('#mtStats').innerHTML = `
+      <div class="stat"><small>Altitude now</small><b id="mtAlt">–</b><span id="mtAltSub"></span></div>
+      <div class="stat"><small>Azimuth now</small><b id="mtAz">–</b><span id="mtAzSub"></span></div>
+      <div class="stat"><small>Illumination</small><b id="mtIllum">–</b><span id="mtIllumSub"></span></div>
+      <div class="stat"><small id="mtCountLbl">Next moonrise</small><b id="mtCount">–</b><span id="mtCountSub"></span></div>
+      <div class="stat"><small>Moonrise</small><b>${riseTxt(ev.rise, ev.alwaysUp ? 'Up all day' : 'None today')}</b><span>${num(ev.rise) ? `Azimuth ${azTxt(ev.riseAz)}` : esc(nextRise || (ev.alwaysUp ? 'Above the horizon all day' : 'Below the horizon all day'))}</span></div>
+      <div class="stat"><small>Moonset</small><b>${riseTxt(ev.set, ev.alwaysDown ? 'Down all day' : 'None today')}</b><span>${num(ev.set) ? `Azimuth ${azTxt(ev.setAz)}` : esc(nextSet || '')}</span></div>
+      <div class="stat"><small>Highest today</small><b>${ev.alwaysDown ? '—' : fDeg(ev.transitAlt)}</b><span>${ev.alwaysDown ? 'Below the horizon all day' : `${esc(fmtHM(ev.transit))} · due ${dirName(ev.transitAz)}`}</span></div>
+      <div class="stat"><small>Distance</small><b>${esc(fD(p.dist))}</b><span>Looks ${p.diam.toFixed(1)}′ wide · ${Math.abs(sizeVs) < 0.5 ? 'average size' : `${Math.abs(sizeVs).toFixed(0)}% ${sizeVs > 0 ? 'larger' : 'smaller'} than average`}</span></div>
+      <div class="stat"><small>Next full moon</small><b>${full ? esc(`${fmtDay(full.t)} ${fmtDate(full.t)}`) : '—'}</b><span>${full ? `${esc(fmtHM(full.t))} · ${esc(fullNote)}` : ''}</span></div>
+      <div class="stat"><small>Next new moon</small><b>${nw ? esc(`${fmtDay(nw.t)} ${fmtDate(nw.t)}`) : '—'}</b><span>${nw ? `${esc(fmtHM(nw.t))} · ${dayTag(nw.t)}` : ''}</span></div>
+      <div class="stat"><small>${qtr ? esc(qtr.name) : 'Next quarter'}</small><b>${qtr ? esc(`${fmtDay(qtr.t)} ${fmtDate(qtr.t)}`) : '—'}</b><span>${qtr ? `${esc(fmtHM(qtr.t))} · ${dayTag(qtr.t)}` : ''}</span></div>
+      <div class="stat"><small>Moon viewing</small><b>${esc(view.title)}</b><span>${esc(view.sub)}</span></div>`;
+    $('#mtSub').textContent = `${Lunar.phaseName(p.elong)} · ${pct(p.illum)} lit · ${Lunar.age(now).toFixed(1)} days old · ${fD(p.dist)} away`;
+
+    // ---- next 30 days ----
+    const evs = Lunar.phases(d0, 9);
+    let strip = '';
+    for (let k = 0; k < 30; k++) {
+      const t = d0 + k * DAY + 21 * HOUR, q = Lunar.position(t, lat, lon);
+      const e = evs.find((x) => x.t >= d0 + k * DAY && x.t < d0 + (k + 1) * DAY);
+      const label = new Date(d0 + k * DAY + off).toLocaleDateString(undefined, { day: 'numeric', timeZone: 'UTC' });
+      const wd = new Date(d0 + k * DAY + off).toLocaleDateString(undefined, { weekday: 'narrow', timeZone: 'UTC' });
+      strip += `<div class="mt-day${k === 0 ? ' today' : ''}${e ? ' ev' : ''}" title="${esc(`${fmtDate(d0 + k * DAY + 12 * HOUR)} · ${Lunar.phaseName(q.elong)} · ${pct(q.illum)} lit${e ? ` · ${e.name} at ${fmtHM(e.t)}` : ''}`)}">
+        <span>${esc(wd)}</span>${moonIcon(q.illum, q.waxing, MT.south, 24)}<b>${esc(label)}</b>${e ? `<em>${esc(['New', '1st Q', 'Full', 'Last Q'][e.k])}</em>` : ''}</div>`;
+    }
+    $('#mtStrip').innerHTML = strip;
+    $('#mtMonthNote').textContent = full && full.dist < 361000 ? `Supermoon on ${fmtDate(full.t)}` : '';
+  }
+
+  /** live part — runs every second while the page is visible */
+  function updateMoonTracker() {
+    if (!S.t || typeof Lunar === 'undefined' || !$('#mtCurve')) return;
+    if ($('[data-sec="moon"]')?.classList.contains('user-hidden')) return;
+    const now = Date.now(); const mid = localMidnightUTC(now);
+    const key = `${S.t.lat.toFixed(4)},${S.t.lon.toFixed(4)},${TZ},${mid}`;
+    if (MT.key !== key) { MT.key = key; buildMoonTracker(mid); }
+    const { ev, evT, d0, d1, X, Y } = MT;
+    const p = Lunar.position(now, MT.lat, MT.lon), up = p.alt > -0.3;
+    const x = X(clamp(now, d0, d1)), y = Y(p.alt);
+    const g = $('#mtMoonG'); if (!g) return;
+    g.setAttribute('transform', `translate(${x.toFixed(1)} ${y.toFixed(1)})`); g.classList.toggle('moon-down', !up);
+    // label above the dot, or below it when it would run into the "Highest" caption
+    const nearTop = !ev.alwaysDown && Math.abs(x - X(ev.transit)) < 90 && y < Y(ev.transitAlt) + 34;
+    const txt = $('#mtMoonTxt'); txt.textContent = fDeg(p.alt); txt.setAttribute('y', nearTop ? 26 : -19);
+    txt.setAttribute('text-anchor', x < MV.L + 30 ? 'start' : x > MV.R - 30 ? 'end' : 'middle'); txt.setAttribute('x', x < MV.L + 30 ? -8 : x > MV.R - 30 ? 8 : 0);
+    const nl = $('#mtNowLine'); nl.setAttribute('x1', x.toFixed(1)); nl.setAttribute('x2', x.toFixed(1));
+    $('#mtClipRect').setAttribute('width', Math.max(0, x - MV.L).toFixed(1));
+    const [dx, dy] = domePt(p.az, p.alt);
+    const dm = $('#mtDomeMoon'); dm.setAttribute('transform', `translate(${dx.toFixed(1)} ${dy.toFixed(1)})`); dm.classList.toggle('moon-down', !up);
+    // the lit side turns slowly: redraw the disks once a minute
+    if (now - MT.diskAt > 60e3) {
+      MT.diskAt = now;
+      const rot = limbRot(p);
+      $('#mtMoonDisk').innerHTML = moonDiskSVG(p.illum, 7, rot);
+      $('#mtDomeDisk').innerHTML = moonDiskSVG(p.illum, 6, rot);
+      $('#mtDisk').innerHTML = moonDiskSVG(p.illum, 56, rot, 'big') + svgNS('text', { x: 0, y: -62, 'text-anchor': 'middle' }, '↑ straight up');
+      $('#mtDiskNote').textContent = `${Lunar.phaseName(p.elong)} · ${pct(p.illum)} lit${up ? '' : ' · below the horizon now'}`;
+      $('#mtIllum').textContent = pct(p.illum);
+      $('#mtIllumSub').textContent = `${Lunar.phaseName(p.elong)} · ${p.waxing ? 'waxing' : 'waning'} · ${Lunar.age(now).toFixed(1)} days old`;
+    }
+    $('#mtAlt').textContent = `${p.alt >= 0 ? '' : '−'}${Math.abs(p.alt).toFixed(2)}°`;
+    const rising = Lunar.position(now + 5 * 60e3, MT.lat, MT.lon).alt > p.alt;
+    $('#mtAltSub').textContent = up ? (rising ? 'Above the horizon · rising' : 'Above the horizon · sinking') : 'Below the horizon';
+    $('#mtAz').textContent = `${p.az.toFixed(1)}°`;
+    $('#mtAzSub').textContent = `${dirName(p.az)}${up ? ' · look this way' : ''}`;
+    // countdown to the next moonrise or moonset
+    const evts = [[ev.rise, 'rise'], [ev.set, 'set'], [evT.rise, 'rise'], [evT.set, 'set']].filter(([t]) => num(t) && t > now).sort((a, b) => a[0] - b[0]);
+    const nxt = evts.find(([, k]) => (up ? k === 'set' : k === 'rise'));
+    $('#mtCountLbl').textContent = up ? 'Moonset in' : 'Moonrise in';
+    $('#mtCount').textContent = nxt ? durHMS(nxt[0] - now) : '—';
+    $('#mtCountSub').textContent = nxt ? `${dayTag(nxt[0]) === 'today' ? 'Today' : 'Tomorrow'} at ${fmtHM(nxt[0])}` : up ? 'Stays up through tomorrow' : 'Stays down through tomorrow';
+    $('#mtPhase').textContent = `${up ? `Up · ${fDeg(p.alt)}` : 'Below the horizon'}${nxt ? ` · ${up ? 'sets' : 'rises'} in ${dur(nxt[0] - now)}` : ''}`;
+  }
+
+  function moonHover(e) {
+    if (!MT.X) return;
+    const svg = $('#mtCurve'); const x = svgX(svg, e);
+    const t = MT.d0 + clamp((x - MV.L) / (MV.R - MV.L), 0, 1) * DAY;
+    const p = Lunar.position(t, MT.lat, MT.lon);
+    const sx = MT.X(t), sy = MT.Y(p.alt);
+    $('#mtHover').style.display = '';
+    $('#mtHoverLine').setAttribute('x1', sx.toFixed(1)); $('#mtHoverLine').setAttribute('x2', sx.toFixed(1));
+    $('#mtHoverDot').setAttribute('cx', sx.toFixed(1)); $('#mtHoverDot').setAttribute('cy', sy.toFixed(1));
+    const [dx, dy] = domePt(p.az, p.alt); const dh = $('#mtDomeHover');
+    dh.style.display = p.alt > -0.3 ? '' : 'none'; dh.setAttribute('cx', dx.toFixed(1)); dh.setAttribute('cy', dy.toFixed(1));
+    const tip = $('#mtCurveTip');
+    tip.innerHTML = `<b>${esc(whenTxt(t))}<span class="tag">${relTag(t)}</span></b>
+      <div><i style="background:#dfe6fb"></i>Moon altitude: ${fDeg(p.alt)}${p.alt < -0.3 ? ' (below the horizon)' : ''}</div>
+      <div><i style="background:#7cc4ff"></i>Azimuth: ${azTxt(p.az)}</div>
+      <div><i style="background:#f3efd9"></i>${pct(p.illum)} lit · ${Lunar.phaseName(p.elong).toLowerCase()}</div>`;
+    placeTip(tip, svg, sx, sy);
+  }
+  function moonLeave() {
+    const h = $('#mtHover'); if (h) h.style.display = 'none';
+    const dh = $('#mtDomeHover'); if (dh) dh.style.display = 'none';
+    $('#mtCurveTip').hidden = true;
+  }
+  if ($('#mtCurve')) {
+    const el = $('#mtCurve');
+    el.addEventListener('pointermove', moonHover); el.addEventListener('pointerdown', moonHover);
+    el.addEventListener('pointerleave', moonLeave); el.addEventListener('pointercancel', moonLeave);
+  }
+
   function renderStatus() {
     const pill = $('#livePill'); pill.className = 'live-pill';
     const L = S.loc;
@@ -1113,7 +1337,7 @@
       $('#updated').textContent = `Updated ${ago(S.lastFetch)}${S.source === 'cache' ? ' · saved copy' : S.source === 'stale' ? ' · offline copy' : ''}`;
       const left = S.nextFetch - Date.now();
       $('#nextRefresh').textContent = S.fetching ? 'Updating…' : left > 0 && left < Infinity ? `Next update in ${Math.floor(left / 60e3)}:${String(Math.floor((left % 60e3) / 1000)).padStart(2, '0')}` : '';
-      if (!document.hidden) updateSunTracker();
+      if (!document.hidden) { updateSunTracker(); safely('moon tracker', updateMoonTracker); }
     }
     if (Date.now() >= S.nextFetch && !document.hidden && !S.fetching) refresh('auto');
   }
@@ -1516,7 +1740,7 @@
   Prefs.on((changed) => {
     const has = (...k) => k.some((x) => changed.has(x));
     if (has('temp', 'wind', 'precip', 'pressure', 'dist', 'clock')) {
-      fmtCache.clear(); ST.key = null; setSeg('.top-actions .seg', 'unit', P('temp'));
+      fmtCache.clear(); ST.key = null; MT.key = null; setSeg('.top-actions .seg', 'unit', P('temp'));
       if (S.t) { renderAll(); renderFeed(); updateHazards(); }
     }
     if (has('pulseWin', 'pulseThr', 'profile')) {
@@ -1527,7 +1751,7 @@
     if (has('effects')) applyFx();
     if (has('min15') && S.loc) refresh('location');
     if (has('cacheMin') && S.lastFetch) S.nextFetch = Math.max(Date.now() + 30e3, nextRefreshAt(S.lastFetch));
-    if (has('order', 'hidden')) requestAnimationFrame(() => { if (S.t) { renderChart(); renderQ15(); ST.key = null; updateSunTracker(); } if (typeof Storms !== 'undefined') Storms.refresh(); });
+    if (has('order', 'hidden')) requestAnimationFrame(() => { if (S.t) { renderChart(); renderQ15(); ST.key = null; updateSunTracker(); MT.key = null; updateMoonTracker(); } if (typeof Storms !== 'undefined') Storms.refresh(); });
   });
   Prefs.hooks({
     dataInfo: () => { if (!hasCache()) return ''; const i = WxCache.info(); return i.places ? `${i.places} place${i.places > 1 ? 's' : ''} · ${i.kb} KB` : 'No saved forecasts'; },
@@ -1537,7 +1761,7 @@
   let resizeTimer;
   window.addEventListener('resize', () => {
     clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(() => { ST.key = null; updateSunTracker(); }, 200); // sun SVGs are sized in real pixels
+    resizeTimer = setTimeout(() => { ST.key = null; updateSunTracker(); MT.key = null; updateMoonTracker(); }, 200); // sun/moon SVGs are sized in real pixels
   });
 
   document.addEventListener('visibilitychange', () => {
@@ -1547,8 +1771,8 @@
   });
 
   /* ---------------- phone app shell: tabs, gestures, search, install ---------------- */
-  const TABS = ['now', 'forecast', 'alerts', 'storms', 'sun', 'feed'];
-  const TAB_TITLE = { now: '', forecast: 'Forecast', alerts: 'Alerts', storms: 'Cyclone tracker', sun: 'Sun & daylight', feed: 'Live feed' };
+  const TABS = ['now', 'forecast', 'alerts', 'storms', 'sun', 'moon', 'feed'];
+  const TAB_TITLE = { now: '', forecast: 'Forecast', alerts: 'Alerts', storms: 'Cyclone tracker', sun: 'Sun & daylight', moon: 'Moon', feed: 'Live feed' };
   const isPhone = () => window.matchMedia('(max-width: 760px)').matches;
   const tabScroll = {};
   function setTab(name, { remember = true } = {}) {
@@ -1568,6 +1792,7 @@
     requestAnimationFrame(() => {
       if (name === 'forecast' && S.t) { renderChart(); renderQ15(); }
       if (name === 'sun') { ST.key = null; updateSunTracker(); }
+      if (name === 'moon') { MT.key = null; updateMoonTracker(); }
       if (name === 'storms' && typeof Storms !== 'undefined') Storms.refresh();
     });
   }

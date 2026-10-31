@@ -5,7 +5,7 @@ A static site: plain HTML, CSS and JavaScript, with no build step. Chart.js, Lea
 ## Files
 | File | Purpose |
 |---|---|
-| `index.html` | Page skeleton and Content-Security-Policy. Holds the top bar (search, GPS, install, units, settings) and every section, each tagged `data-sec` and `data-tab`: <ul><li>hero, Pulse Advisor, warnings, tiles;</li><li>15-minute outlook, chart, live feed, hourly, daily, look-back;</li><li>cyclone tracker, sun tracker.</li></ul> Also the bottom tab bar, the location gate and the settings sheet. |
+| `index.html` | Page skeleton and Content-Security-Policy. Holds the top bar (search, GPS, install, units, settings) and every section, each tagged `data-sec` and `data-tab`: <ul><li>hero, Pulse Advisor, warnings, tiles;</li><li>15-minute outlook, chart, live feed, hourly, daily, look-back;</li><li>cyclone tracker, sun tracker, moon tracker.</li></ul> Also the bottom tab bar, the location gate and the settings sheet. |
 | `styles.css` | Self-hosted Inter, theme tokens, scene palettes (`body.scene-*`, incl. `scene-cyclone`) and themes (`body.theme-*`, `density-compact`), the 12-column desktop grid (packed by `settings.js`), and the phone app shell at ≤ 760 px. |
 | `app.js` | Location, forecast refresh with the on-device cache, units and clock, tiles, chart, 15-minute outlook, Pulse card, feed, sun tracker, scene/effect selection, tabs, gestures and PWA (one IIFE). |
 | `guard.js` | Loaded first. If anything throws before the first forecast is on screen, the location gate shows the error and its details, with *Reload* and *Clear saved data & reload*, instead of an endless spinner. |
@@ -17,6 +17,7 @@ A static site: plain HTML, CSS and JavaScript, with no build step. Chart.js, Lea
 | `storms.js` | `Storms`: the cyclone tracker (world map, layers, forecast slider, full screen, storm list, intensity chart). |
 | `fx.js` | `FX`: canvas precipitation and storm effects, with full, lite or off quality. |
 | `sun.js` | `Solar`: solar position and sun-event maths (NOAA Solar Calculator equations, after Meeus), and `Solar.year()` for the year chart and its markers. Pure functions with no DOM access, unit-tested in `../tests/sun.test.mjs`. |
+| `moon.js` | `Lunar`: Moon position, rise/set, phases, distance and the lit side's tilt (main terms of the published lunar theory). Pure functions, unit-tested in `../tests/moon.test.mjs`. |
 | `sky.js` | `Sky.describe()`: the *Sky colour* tile. A rule-based estimate of the sky's colour and shade from cloud at each level, aerosols, dust, humidity through the column and the sun's height. |
 | `icons.js` | `WX.iconSVG(code, isDay, size, stormy)`, `WX.stormy()` (when conditions count as stormy), `WX.WMO` (code → text), `WX.scene(code, isDay)`, `WX.umbrellaSVG()`, `WX.pulseSVG(kind)`, `WX.stormGlyph(colour, south, size, category, ink)`. |
 | `vendor/` | Chart.js 4.4.1 (MIT), Leaflet 1.9.4 (BSD-2), Inter variable font (OFL 1.1), each with its licence. See `../THIRD_PARTY_NOTICES.md`. |
@@ -149,6 +150,16 @@ When the static parts are rebuilt:
 - they are rebuilt when the location's calendar date, the location or the window size changes;
 - the SVGs are drawn at real pixel width so text stays readable on phones;
 - the tracker uses the coordinates of the *loaded* dataset, so it never mixes a new location with the previous location's time zone.
+
+### Moon tracker (`moon.js` + `buildMoonTracker` / `updateMoonTracker`)
+Below the Sun tracker on wide screens; its own **Moon** tab on phones. Everything is computed in the browser.
+- **Maths (`Lunar`):** the Moon's ecliptic longitude, latitude and distance from the main periodic terms of the published lunar theory (Meeus, *Astronomical Algorithms*, ch. 47), on terrestrial time (ΔT ≈ 69 s) with the main nutation term. It is then converted to the local sky with the horizontal parallax (about 1°, so the Moon is placed as seen from the ground, not the Earth's centre) and refraction.
+  - Phase comes from the Sun–Moon elongation; principal phases are found by root-finding. The tilt of the lit side is the bright-limb position angle minus the parallactic angle.
+  - Checks (`tests/moon.test.mjs`): during the 2017 and 2024 total solar eclipses the Moon sits within 0.02° of the Sun; new/full/quarter times match published ones within about a minute.
+- **Altitude curve** for the local day (midnight → midnight), with moonrise and moonset, the highest point, the travelled path, a live dot and hover details (time, altitude, azimuth, % lit).
+- **Phase disk** drawn as seen from your location, tilted as it appears in your sky (e.g. the "smiling" crescent in the tropics), and a **sky path** from above.
+- **Stats (12):** altitude and azimuth now, illumination and age, countdown to the next moonrise or moonset, moonrise, moonset, highest point, distance and apparent size, next full moon (flagged as a supermoon under 361,000 km), new moon and quarter, and **moon viewing**: when it is up after dark in the next 18 h and the forecast cloud cover then.
+- **Next 30 days:** the phase each evening, with principal phases marked.
 
 ### "Stormy" conditions (`WX.stormy` in `icons.js`)
 The weather code alone can say "Showers" in a gale or a cyclone. The condition label (hero, hourly and daily icons, 15-minute tooltips, the feed and the Pulse card) switches to **Stormy** (**Snowstorm** with snow), with a wind-driven icon and a one-line reason, when any of these holds:
@@ -323,7 +334,7 @@ The settings button (sliders icon) in the top bar opens a sheet (keyboard: focus
 |---|---|
 | Units | temperature °C/°F; wind km/h, mph, m/s, knots; precipitation mm/in; pressure hPa/inHg/mmHg; distance km/mi (also storm distances and wave heights); clock auto/12 h/24 h. The top-bar °C/°F switch applies the metric or imperial set. |
 | Appearance | theme (live sky / night / black OLED / high contrast), six accent colours, comfortable/compact density, weather effects full/lite/off |
-| Layout | show, hide and reorder the 12 sections; show or hide each detail tile; start tab on phones; reset |
+| Layout | show, hide and reorder the 13 sections; show or hide each detail tile; start tab on phones; reset |
 | Pulse Advisor | profile (standard / sensitive / hardy), look-ahead window, rain threshold |
 | Data & privacy | location on opening (saved fix / ask for GPS); 15-minute data auto/off; cache 15/20/30 min/off; how much is saved; *Clear saved data*; reset everything |
 
@@ -368,7 +379,7 @@ const FEED_MAX = 60;           // feed entries kept
 The cache keeps `MAX = 8` places for `KEEP_MS = 24 h` (`cache.js`). Pulse thresholds are at the top of each factor in `pulse.js`.
 
 ## Testing tips
-- `node ../tests/pulse.test.mjs` checks the Pulse Advisor logic, `node ../tests/sun.test.mjs` the year-chart markers at polar, tropical and mid latitudes, and `node ../tests/conditions.test.mjs` when the label turns "Stormy". `../tests/smoke.mjs` drives the whole site in Chromium against mocked APIs; see `../tests/README.md`.
+- `node ../tests/pulse.test.mjs` checks the Pulse Advisor logic, `node ../tests/sun.test.mjs` the year-chart markers at polar, tropical and mid latitudes, `node ../tests/conditions.test.mjs` when the label turns "Stormy", and `node ../tests/moon.test.mjs` the lunar maths against eclipses and published phase times. `../tests/smoke.mjs` drives the whole site in Chromium against mocked APIs; see `../tests/README.md`.
 - Geolocation needs HTTPS or `localhost`. Serve the folder with `py -m http.server 8090` from inside `LiveWeather/`, or with `--directory LiveWeather` from the repo root.
 - To simulate GPS in DevTools, use **Sensors → Location**. The **More tools → Sensors** panel lets you change the location while the page is open, which tests the "you moved" refresh.
 

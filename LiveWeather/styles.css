@@ -309,6 +309,30 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .st-year .yr-ext { fill: #7cc4ff; stroke: #0c1a3a; stroke-width: 1.5; }
 .st-year .yr-el-ext { stroke: #0c1a3a; stroke-width: 1.2; }
 .st-year .yr-el-ext.big { stroke: #fff; stroke-width: 1.5; }
+/* moon tracker: silver instead of gold */
+.moontrack-card .st-grid .track-future { stroke: rgba(205, 216, 245, .45); }
+.moontrack-card .st-grid .track-past { stroke: #dfe6fb; }
+.moontrack-card .st-grid .ev-dot { fill: #b9c8f2; }
+.moontrack-card .st-grid .hover-dot { stroke: #9fb3ec; }
+.moon-disk .m-dark { fill: #262f4d; }
+.moon-disk .m-lit { fill: #f3efd9; }
+.moon-disk .m-rim { fill: none; stroke: rgba(255,255,255,.35); stroke-width: .8; }
+.moon-disk.big .m-dark { fill: #2b3557; }
+.moon-disk.big .m-rim { stroke: rgba(255,255,255,.25); stroke-width: 1; }
+.moontrack-card .moon-glow { fill: rgba(230, 236, 255, .14); }
+.moontrack-card .moon-down { opacity: .55; }
+.moontrack-card .st-grid { grid-template-columns: minmax(0, 1fr) 440px; }
+.mt-side { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1fr); gap: 12px; align-items: start; }
+.mt-side svg#mtDisk { max-width: 160px; margin: 6px auto 4px; }
+.mt-disk-note { text-align: center; }
+@media (max-width: 1080px) { .moontrack-card .st-grid { grid-template-columns: 1fr; } .mt-side svg#mtDisk { max-width: 150px; } }
+.mt-strip { display: grid; grid-template-columns: repeat(30, minmax(34px, 1fr)); gap: 2px; overflow-x: auto; padding: 4px 0 6px; scrollbar-width: thin; }
+.mt-day { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 5px 0 4px; border-radius: 8px; font-size: 10.5px; color: var(--muted); }
+.mt-day b { font-weight: 600; color: var(--text); font-size: 11px; }
+.mt-day.today { background: rgba(255,255,255,.08); }
+.mt-day.ev { background: rgba(124, 196, 255, .12); }
+.mt-day em { font-style: normal; font-size: 9.5px; color: var(--accent); white-space: nowrap; }
+.mt-day svg { display: block; }
 
 /* ---------- Chart ---------- */
 .chart-legend-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
@@ -542,6 +566,7 @@ main[aria-busy="true"] .tiles:empty { min-height: 150px; border-radius: var(--ra
   main[data-active="forecast"] > [data-tab]:not([data-tab~="forecast"]),
   main[data-active="alerts"] > [data-tab]:not([data-tab~="alerts"]),
   main[data-active="sun"] > [data-tab]:not([data-tab~="sun"]),
+  main[data-active="moon"] > [data-tab]:not([data-tab~="moon"]),
   main[data-active="storms"] > [data-tab]:not([data-tab~="storms"]),
   main[data-active="feed"] > [data-tab]:not([data-tab~="feed"]) { display: none !important; }
   main > [data-tab] { animation: tabIn .28s ease; }
@@ -559,7 +584,7 @@ main[aria-busy="true"] .tiles:empty { min-height: 150px; border-radius: var(--ra
   .w-ico { width: 32px; height: 32px; font-size: 16px; }
 
   .tabbar {
-    display: grid; grid-template-columns: repeat(6, 1fr); position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+    display: grid; grid-template-columns: repeat(var(--n, 7), 1fr); position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
     padding: 6px 6px calc(6px + env(safe-area-inset-bottom));
     background: color-mix(in srgb, var(--sky-c) 78%, transparent); backdrop-filter: blur(20px) saturate(1.4); -webkit-backdrop-filter: blur(20px) saturate(1.4);
     border-top: 1px solid var(--stroke);

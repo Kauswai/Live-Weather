@@ -44,6 +44,9 @@ All of these were implemented independently for SkyPulse from published equation
 
 - **Sun position and sun events** (`sun.js`): the NOAA Solar Calculator equations (after Jean Meeus,
   *Astronomical Algorithms*), published by NOAA's Global Monitoring Laboratory.
+- **Moon position, rise/set and phases** (`moon.js`): the main periodic terms of the lunar theory as published in Jean
+  Meeus, *Astronomical Algorithms* (ch. 47), standard parallax and parallactic-angle formulas, and Bennett's refraction
+  formula.
 - **Cyclone geometry** (`hazards.js`):
   - great-circle distance (haversine), initial bearing and destination point;
   - point-in-polygon by ray casting;

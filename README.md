@@ -18,7 +18,7 @@ You can install it on a phone as an app.
 ## Highlights
 | | |
 |---|---|
-| 📱 **Phone app** | A bottom tab bar (Now · Forecast · Alerts · Storms · Sun · Feed), swipe between tabs, pull to refresh, a search sheet, and alert badges. It installs as a PWA and the app shell works offline. |
+| 📱 **Phone app** | A bottom tab bar (Now · Forecast · Alerts · Storms · Sun · Moon · Feed), swipe between tabs, pull to refresh, a search sheet, and alert badges. It installs as a PWA and the app shell works offline. |
 | 🫀 **Pulse Advisor** | Looks 1–24 h ahead at rain and snow intensity and type, gusts and cyclone winds, feels-like heat and cold, fog, air quality and UV, plus SkyPulse advisories and official warnings. It gives one verdict on a 0–5 scale: <ul><li>"No umbrella needed", "Take an umbrella" or "Rain jacket, not an umbrella";</li><li>"Limit time outdoors" or "Avoid going out";</li><li>"Stay indoors".</li></ul> It also shows what to take, six factor meters, the warnings in your window, and a link to your national weather service. There are Standard, Sensitive and Hardy profiles. |
 | 🌀 **Cyclone tracker** | Its own tab: a live world map of every active storm from **NHC** (Atlantic/East & Central Pacific), **JMA** (RSMC Tokyo), **IMD** (RSMC New Delhi: official cone and wind areas), **JTWC** (all other basins) and **GDACS** (surge/rain model maps). <ul><li>Map layers: forecast cones, intensity-coloured past and forecast tracks, 34/50/64-kt wind radii and labels, each switchable.</li><li>Spinning storm symbols; from Category 1 up they show the category number and are coloured yellow, dark yellow, orange, red and purple (Cat 1–5).</li><li>A forecast slider with play, and a full-screen map.</li><li>An intensity-forecast chart with a typical-error band.</li></ul> For a storm near you it shows: <ul><li>the track with your position and the line of closest approach;</li><li>intensity on the agency's own scale and the local scale;</li><li>closest approach, and when gale- or hurricane-force winds arrive and end;</li><li>how the wind direction changes as the storm passes;</li><li>periods of **onshore and offshore winds** from a coastline probe, and storm-surge exposure;</li><li>rain during passage, waves at the nearest sea, and the official bulletins.</li></ul> |
 | ⚠️ **Warnings** | Official warnings come from **NWS** (US), **IMD/state agencies via NDMA SACHET** (India, matched to your state or district), **Hong Kong Observatory** and the official cyclone areas. They're combined with SkyPulse forecast hazards: heavy rain and flooding, damaging winds, storm surge, dangerous surf, thunderstorms and hail, heat, cold, fog and ice. |
@@ -33,6 +33,7 @@ You can install it on a phone as an app.
 | 🎨 **Sky colour** | What the sky over you should look like now (deep blue, milky haze, dusty yellow, grey overcast, golden low sun…) and why. It is estimated from cloud at each level, aerosols and dust, humidity from the surface to 9 km, and the sun's height. |
 | 🗓️ **Forecasts** | Next-24-hour strip, 8-day outlook, and a look back at the last 48 hours. |
 | 🌅 **Sun tracker** | Live solar elevation and azimuth, a sunrise → sunset curve you can hover, a top-down sky path, day length, golden hour, twilight, and a full-year chart of day length and maximum sun angle. The year chart marks the start and end of the midnight sun and polar night (blue) and each yearly high and low of the noon sun, including both overhead days in the tropics (yellow). |
+| 🌙 **Moon tracker** | Below the sun tracker (its own Moon tab on phones): live altitude and azimuth, a moonrise → moonset curve you can hover, the phase drawn as it is tilted in your sky, the sky path, distance and apparent size, the next full, new and quarter moons (supermoons flagged), when the Moon is up after dark with the forecast cloud cover, and the next 30 days of phases. |
 
 No API keys, no tracking, no third-party scripts or fonts: the libraries are served from the site itself. Your coordinates, rounded to about 100 m, go only to the weather, elevation, marine, alert and place-name APIs listed below. A Content-Security-Policy blocks everything else.
 
@@ -51,6 +52,7 @@ Live-Weather/
 │   ├── storms.js             cyclone tracker: world map, time slider, storm list, intensity chart
 │   ├── fx.js                 canvas precipitation and storm effects
 │   ├── sun.js                solar position, sunrise/sunset/twilight maths (NOAA equations), year-chart markers
+│   ├── moon.js               lunar position, rise/set, phases and distance
 │   ├── sky.js                sky colour and shade commentary
 │   ├── stations.js           key polar / remote research stations for search
 │   ├── icons.js              animated SVG weather icons, Pulse glyphs, WMO weather-code names
@@ -103,7 +105,7 @@ GitHub pauses scheduled workflows in repositories with no activity for 60 days. 
   - [Hong Kong Observatory](https://www.hko.gov.hk/) open data.
 - **Maps:** [Leaflet](https://leafletjs.com/) 1.9.4 (BSD-2, self-hosted) with Esri World Dark Gray Canvas tiles (© Esri, © OpenStreetMap contributors).
 - **Place names:** [BigDataCloud](https://www.bigdatacloud.com/) for reverse geocoding; Open-Meteo Geocoding for search, plus a built-in list of key polar research stations (public station positions).
-- **Sun position:** computed locally with the [NOAA Solar Calculator](https://gml.noaa.gov/grad/solcalc/calcdetails.html) equations.
+- **Sun position:** computed locally with the [NOAA Solar Calculator](https://gml.noaa.gov/grad/solcalc/calcdetails.html) equations. **Moon:** computed locally from the published lunar theory (Meeus, *Astronomical Algorithms*).
 - **Charts:** [Chart.js](https://www.chartjs.org/) 4.4.1 (MIT, self-hosted). **Font:** [Inter](https://rsms.me/inter/) (SIL OFL 1.1, self-hosted).
 - Full list with licences: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
