@@ -64,15 +64,23 @@
       title = vivid ? 'Twilight: vivid orange glow' : hazy != null && hazy >= 0.6 ? 'Twilight: muted brownish-red' : 'Twilight: pastel pink and blue';
       comment = `The sun is just below the horizon${toward}: deep blue overhead fades to ${vivid ? 'a strong orange-red band, deepened by particles in the air' : hazy != null && hazy >= 0.6 ? 'a dim, brownish red — heavy haze swallows much of the light' : 'pink and yellow near the horizon, with the bluish Earth shadow and pink Belt of Venus opposite the sun'}.`;
       zenith = '#1d2c63'; horizon = vivid ? '#ff7a45' : hazy != null && hazy >= 0.6 ? '#9c5a48' : '#f3a6a0';
-    } else if (cl >= 80 || cc >= 92) {
+    } else if (cl >= 80 || (cc >= 92 && cl >= 50)) {
       const thick = cl >= 90 && cm >= 50;
       title = thick ? 'Dark grey overcast' : 'Grey overcast';
       comment = `A ${thick ? 'deep, layered' : 'continuous low'} cloud deck (low ${pct(cl)}${cm >= 30 ? `, mid ${pct(cm)}` : ''}) scatters all colours equally, so no blue gets through${thick ? ' and less light reaches the ground' : ''}.`;
       zenith = thick ? '#5b626b' : '#878f98'; horizon = thick ? '#707780' : '#a3a9b0';
-    } else if (cm >= 60 && cl < 50) {
+    } else if (cm >= 60 && cl < 50 && cm >= ch) {
       title = 'Milky white-grey veil';
       comment = `A mid-level sheet of altostratus (${pct(cm)}) dims the sky to a uniform pale grey; the sun shows as a watery disc without a sharp outline.`;
       zenith = '#a3afbd'; horizon = '#cfd5dc';
+    } else if (ch >= 85 && cl < 30) {
+      title = 'Milky white high-cloud sheet';
+      comment = `A sheet of high ice cloud (cirrostratus, high ${pct(ch)}; low ${pct(cl)}) turns the sky a uniform milky white; the sun still shows through with soft shadows, often with a 22° halo.`;
+      zenith = '#9fb4d4'; horizon = '#dde5ee';
+    } else if (cc >= 92) {
+      title = 'Grey, layered cloud';
+      comment = `Several cloud layers (low ${pct(cl)}, mid ${pct(cm)}, high ${pct(ch)}) together cover the sky, washing out the blue to grey.`;
+      zenith = '#8d96a3'; horizon = '#aeb4bc';
     } else if (ch >= 50 && cl < 30 && cm < 30) {
       title = 'Blue with a white sheen';
       comment = `High ice cloud (cirrus/cirrostratus, ${pct(ch)}) spreads a thin white film over the blue${ch < 90 ? '; look for a 22° halo around the sun' : ''}.`;

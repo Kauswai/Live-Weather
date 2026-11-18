@@ -158,7 +158,7 @@
     ...(mode === 'legacy' ? {} : { forecast_minutely_15: 96, past_minutely_15: 4 }),
   });
   const aqURL = ({ lat, lon }, sky = true) => 'https://air-quality-api.open-meteo.com/v1/air-quality?' + new URLSearchParams({
-    latitude: r3(lat), longitude: r3(lon), current: 'us_aqi,pm2_5,pm10' + (sky ? ',aerosol_optical_depth,dust' : ''), timezone: 'auto',
+    latitude: r3(lat), longitude: r3(lon), current: 'us_aqi,pm2_5,pm10' + (sky ? ',aerosol_optical_depth,dust,carbon_monoxide,carbon_dioxide,nitrogen_dioxide,sulphur_dioxide,ozone,ammonia,methane,us_aqi_pm2_5,us_aqi_pm10,us_aqi_nitrogen_dioxide,us_aqi_ozone,us_aqi_sulphur_dioxide,us_aqi_carbon_monoxide' : ''), timezone: 'auto',
   });
   /** air quality incl. aerosols for the sky comment; if the extra fields are refused, the plain request */
   const fetchAQ = (loc) => getJSON(aqURL(loc), 10000).catch((e) => (/HTTP 400/.test(e.message) ? getJSON(aqURL(loc, false), 10000) : null)).catch(() => null);
@@ -495,7 +495,7 @@
       tile('aqi', `<div class="card tile"><div class="t-head">${ico('leaf')}Air quality</div>
         <div class="t-val">${Math.round(aq.us_aqi)}<small>US AQI</small></div>
         <div class="meter"><i style="width:${clamp(aq.us_aqi / 3, 0, 100)}%;background:${col}"></i></div>
-        <div class="t-note">${catTxt}${num(aq.pm2_5) ? ` · PM2.5 ${aq.pm2_5.toFixed(0)} µg/m³` : ''}</div></div>`);
+        <div class="t-note">${catTxt}${aqDriver(aq)}</div>${aqDetails(aq)}</div>`);
     }
     // Moon phase
     const m = typeof Lunar !== 'undefined' ? moonPhase(now) : null; const dFull = m ? Math.round(m.toFull) : 0;
@@ -503,6 +503,23 @@
       <div class="t-val"><span aria-hidden="true">${m.emoji}</span> ${Math.round(m.illum * 100)}<small>% lit</small></div>
       <div class="t-note">${m.name}<br>${dFull === 0 || dFull >= 29 ? 'Full moon tonight' : `Full moon in ${dFull} day${dFull === 1 ? '' : 's'}`}</div></div>`);
     $('#tiles').innerHTML = tiles.join('') || '<p class="muted small tiles-none">All detail tiles are hidden — choose some in <button class="linkish" data-open-settings>Settings → Layout</button>.</p>';
+  }
+
+  /* air-quality details: each pollutant at the surface with its share of the US AQI (CAMS via Open-Meteo) */
+  const AQ_ROWS = [['pm2_5', 'PM2.5', 'µg/m³', 'us_aqi_pm2_5'], ['pm10', 'PM10', 'µg/m³', 'us_aqi_pm10'], ['ozone', 'O₃ ozone', 'µg/m³', 'us_aqi_ozone'],
+    ['nitrogen_dioxide', 'NO₂', 'µg/m³', 'us_aqi_nitrogen_dioxide'], ['sulphur_dioxide', 'SO₂', 'µg/m³', 'us_aqi_sulphur_dioxide'], ['carbon_monoxide', 'CO', 'µg/m³', 'us_aqi_carbon_monoxide'],
+    ['ammonia', 'NH₃', 'µg/m³'], ['dust', 'Dust', 'µg/m³'], ['aerosol_optical_depth', 'Aerosol (AOD)', ''], ['carbon_dioxide', 'CO₂', 'ppm'], ['methane', 'CH₄', 'µg/m³']];
+  function aqDriver(aq) {
+    const top = AQ_ROWS.filter((r) => r[3] && num(aq[r[3]])).sort((a, b) => aq[b[3]] - aq[a[3]])[0];
+    return top ? ` · mainly ${top[1]}` : num(aq.pm2_5) ? ` · PM2.5 ${aq.pm2_5.toFixed(0)} µg/m³` : '';
+  }
+  function aqDetails(aq) {
+    const rows = AQ_ROWS.filter(([k]) => num(aq[k])).map(([k, n, u, ix]) => {
+      const v = aq[k], val = k === 'aerosol_optical_depth' ? v.toFixed(2) : v >= 100 ? Math.round(v).toLocaleString() : v.toFixed(1);
+      const sub = ix && num(aq[ix]) ? aq[ix] : null, col = sub == null ? 'rgba(255,255,255,.35)' : aqiCat(sub)[1];
+      return `<div class="aq-row"><span>${n}</span><i><b style="width:${sub == null ? 0 : clamp(sub / 3, 2, 100)}%;background:${col}"></b></i><em>${val}${u ? ' ' + u : ''}</em></div>`;
+    });
+    return rows.length > 1 ? `<details class="aq-more"><summary>All pollutants (surface)</summary>${rows.join('')}<p class="muted small">Bars: each pollutant's US AQI sub-index. CAMS model estimates at ground level; the free air-quality service has no values at 850–200 hPa.</p></details>` : '';
   }
 
   function moonPhase(ms) {

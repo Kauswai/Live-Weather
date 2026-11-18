@@ -766,3 +766,10 @@ body.density-compact .hero-temp { font-size: 72px; }
   .tabbar button { font-size: 10px; }
   body.map-full .tabbar, body.map-full .topbar { visibility: hidden; }
 }
+
+.aq-more { margin-top: 8px; font-size: 12px; }
+.aq-more summary { cursor: pointer; color: var(--accent); }
+.aq-row { display: grid; grid-template-columns: 86px 1fr auto; gap: 8px; align-items: center; margin-top: 5px; }
+.aq-row i { height: 5px; border-radius: 3px; background: rgba(255,255,255,.08); overflow: hidden; }
+.aq-row b { display: block; height: 100%; }
+.aq-row em { font-style: normal; font-variant-numeric: tabular-nums; color: var(--text); }
