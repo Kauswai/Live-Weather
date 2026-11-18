@@ -45,17 +45,19 @@
   /* ---------------- units & formatting (all driven by the settings) ---------------- */
   const num = (v) => typeof v === 'number' && !Number.isNaN(v);
   const isF = () => P('temp') === 'F';
-  const cT = (c) => (isF() ? c * 9 / 5 + 32 : c);
-  const fT = (c) => (num(c) ? Math.round(cT(c)) + '°' : '–');
+  const isK = () => P('temp') === 'K';
+  const cT = (c) => (isF() ? c * 9 / 5 + 32 : isK() ? c + 273.15 : c);
+  const tU = () => (isK() ? 'K' : '°' + P('temp'));
+  const fT = (c) => (num(c) ? Math.round(cT(c)) + (isK() ? ' K' : '°') : '–');
   const dT = (d) => (isF() ? d * 9 / 5 : d);
   const WIND = { kmh: [1, 'km/h'], mph: [0.621371, 'mph'], ms: [1 / 3.6, 'm/s'], kn: [1 / 1.852, 'kn'] };
   const cW = (k) => k * WIND[P('wind')][0];
   const wU = () => WIND[P('wind')][1];
   const fW = (k) => { if (!num(k)) return '–'; const v = cW(k); return P('wind') === 'ms' && v < 10 ? v.toFixed(1) : String(Math.round(v)); };
-  const isIn = () => P('precip') === 'in';
-  const cP = (mm) => (isIn() ? mm / 25.4 : mm);
-  const pU = () => (isIn() ? 'in' : 'mm');
-  const fP = (mm) => { const v = cP(mm || 0); return isIn() ? v.toFixed(2) : v < 10 ? v.toFixed(1) : String(Math.round(v)); };
+  const isIn = () => P('precip') === 'in', isCm = () => P('precip') === 'cm';
+  const cP = (mm) => (isIn() ? mm / 25.4 : isCm() ? mm / 10 : mm);
+  const pU = () => (isIn() ? 'in' : isCm() ? 'cm' : 'mm');
+  const fP = (mm) => { const v = cP(mm || 0); return isIn() || isCm() ? v.toFixed(2) : v < 10 ? v.toFixed(1) : String(Math.round(v)); };
   const isMi = () => P('dist') === 'mi';
   const cV = (m) => (isMi() ? m / 1609.34 : m / 1000);
   const vU = () => (isMi() ? 'mi' : 'km');
@@ -556,7 +558,7 @@
     const labels = js.map((j) => fmtHM(M.time[j]));
     const cfg = {
       data: { labels, datasets: [
-        { type: 'line', label: `Temperature (°${P('temp')})`, data: js.map((j) => (num(v('t', j)) ? cT(M.t[j]) : null)), yAxisID: 'y', borderColor: '#ff8a5b', backgroundColor: '#ff8a5b', borderWidth: 2.5, pointRadius: 0, pointHoverRadius: 4, tension: 0.35, order: 1 },
+        { type: 'line', label: `Temperature (${tU()})`, data: js.map((j) => (num(v('t', j)) ? cT(M.t[j]) : null)), yAxisID: 'y', borderColor: '#ff8a5b', backgroundColor: '#ff8a5b', borderWidth: 2.5, pointRadius: 0, pointHoverRadius: 4, tension: 0.35, order: 1 },
         { type: 'bar', label: `Precipitation (${pU()} / 15 min)`, data: js.map((j) => cP(M.pr[j] ?? 0)), yAxisID: 'y1', backgroundColor: 'rgba(92,184,255,.75)', borderRadius: 2, order: 2 },
       ] },
       options: {
@@ -572,7 +574,7 @@
         scales: {
           x: { grid: { color: 'rgba(255,255,255,.05)' }, ticks: { color: 'rgba(228,236,255,.6)', maxRotation: 0, autoSkip: true, maxTicksLimit: 7 } },
           y: { grid: { color: 'rgba(255,255,255,.07)' }, border: { display: false }, grace: '10%', ticks: { color: 'rgba(228,236,255,.6)', maxTicksLimit: 5, callback: (x) => Math.round(x) + '°' } },
-          y1: { position: 'right', min: 0, suggestedMax: isIn() ? 0.04 : 1, grid: { display: false }, border: { display: false }, ticks: { color: 'rgba(154,216,255,.7)', maxTicksLimit: 4 } },
+          y1: { position: 'right', min: 0, suggestedMax: isIn() ? 0.04 : isCm() ? 0.1 : 1, grid: { display: false }, border: { display: false }, ticks: { color: 'rgba(154,216,255,.7)', maxTicksLimit: 4 } },
         },
       },
     };
@@ -583,7 +585,7 @@
   /* ---------------- chart ---------------- */
   const hexA = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`; };
   const PARAMS = {
-    temp: { unit: () => '°' + P('temp'), series: [
+    temp: { unit: tU, series: [
       { k: 't', label: 'Temperature', color: '#ff8a5b', fill: true, conv: cT },
       { k: 'at', label: 'Feels like', color: '#ffd166', width: 1.5, conv: cT },
       { k: 'dp', label: 'Dew point', color: '#6cc6ff', width: 1.5, conv: cT }] },
@@ -678,7 +680,7 @@
       },
     };
     if (Pm.series.some((s) => s.axis === 'y1')) {
-      scales.y1 = { position: 'right', min: 0, suggestedMax: isIn() ? 0.1 : 2, grid: { display: false }, border: { display: false },
+      scales.y1 = { position: 'right', min: 0, suggestedMax: isIn() ? 0.1 : isCm() ? 0.2 : 2, grid: { display: false }, border: { display: false },
         ticks: { color: 'rgba(154,216,255,.7)', maxTicksLimit: 5 }, title: { display: true, text: pU() + '/h', color: 'rgba(154,216,255,.6)' } };
     }
 

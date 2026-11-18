@@ -29,9 +29,9 @@
   const LAYERS = [['cone', 'Cones'], ['track', 'Forecast track'], ['past', 'Past track'], ['radii', 'Wind radii'], ['labels', 'Labels']];
 
   const OPT = {
-    temp: [['C', '°C'], ['F', '°F']],
+    temp: [['C', '°C'], ['F', '°F'], ['K', 'K']],
     wind: [['kmh', 'km/h'], ['mph', 'mph'], ['ms', 'm/s'], ['kn', 'knots']],
-    precip: [['mm', 'mm'], ['in', 'inches']],
+    precip: [['mm', 'mm'], ['cm', 'cm'], ['in', 'inches']],
     pressure: [['hPa', 'hPa'], ['inHg', 'inHg'], ['mmHg', 'mmHg']],
     dist: [['km', 'km'], ['mi', 'miles']],
     clock: [['auto', 'Auto'], ['12', '12-hour'], ['24', '24-hour']],
